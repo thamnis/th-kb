@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -32,13 +33,14 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -62,11 +64,14 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val BgColor = Color(0xFF1B1C1E)
-private val KeyBgColor = Color(0xFF34363A)
-private val KeyPressedColor = Color(0xFF52555A)
-private val ActionKeyBgColor = Color(0xFF282A2E)
-private val AccentBgColor = Color(0xFFA8C7FA)
-private val AccentFgColor = Color(0xFF062E6F)
+private val KeyBgColor = Color(0xFF3A3C41)
+private val KeyShadowColor = Color(0xFF0E0F11)
+private val KeyPressedColor = Color(0xFF5A5D64)
+private val ActionKeyBgColor = Color(0xFF2B2D31)
+private val PillKeyBgColor = Color(0xFF43474E)
+private val ReturnBgColor = Color(0xFFA8C7FA)
+private val ReturnFgColor = Color(0xFF062E6F)
+private val HintTextColor = Color(0xFF9AA0A6)
 private val ToolbarTextColor = Color(0xFFE3E3E3)
 
 private data class ActivePointer(
@@ -152,6 +157,8 @@ fun KeyboardRoot(
                 PanelMode.KEYBOARD -> {
                     TouchKeyGrid(
                         rows = rows,
+                        layoutId = activeLayoutId,
+                        isAlphaLayer = layer == KeyboardLayer.ALPHA,
                         shiftState = shiftState,
                         returnAction = returnAction,
                         accentPopup = accentPopup,
@@ -170,6 +177,7 @@ fun KeyboardRoot(
                                 "SYMBOLS" -> layer = KeyboardLayer.SYMBOLS
                                 "MORE_SYMBOLS" -> layer = KeyboardLayer.SYMBOLS_MORE
                                 "ALPHA" -> layer = KeyboardLayer.ALPHA
+                                "EMOJI_KEY" -> panelMode = PanelMode.EMOJI
                                 "SPACE" -> onCommitText(" ")
                                 "RETURN" -> onReturn()
                                 else -> {
@@ -207,32 +215,26 @@ private fun ToolbarRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(44.dp)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ToolbarChip(
-                label = if (panelMode == PanelMode.EMOJI) "ABC" else "☺",
-                active = panelMode == PanelMode.EMOJI,
-                onClick = onToggleEmoji,
-            )
-            ToolbarChip(
-                label = if (panelMode == PanelMode.KAOMOJI) "ABC" else "(^_^)",
-                active = panelMode == PanelMode.KAOMOJI,
-                onClick = onToggleKaomoji,
-            )
-            ToolbarChip(
-                label = "Paste",
-                active = false,
-                onClick = onPaste,
-            )
-        }
-
-        ToolbarChip(
+        ToolbarIcon(
+            label = if (panelMode == PanelMode.EMOJI) "ABC" else "☺",
+            active = panelMode == PanelMode.EMOJI,
+            onClick = onToggleEmoji,
+        )
+        ToolbarIcon(
+            label = if (panelMode == PanelMode.KAOMOJI) "ABC" else "(^_^)",
+            active = panelMode == PanelMode.KAOMOJI,
+            onClick = onToggleKaomoji,
+        )
+        ToolbarIcon(
+            label = "Paste",
+            active = false,
+            onClick = onPaste,
+        )
+        ToolbarIcon(
             label = "⚙",
             active = false,
             onClick = onOpenSettings,
@@ -241,25 +243,23 @@ private fun ToolbarRow(
 }
 
 @Composable
-private fun ToolbarChip(
+private fun ToolbarIcon(
     label: String,
     active: Boolean,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
-            .background(
-                color = if (active) AccentBgColor else ActionKeyBgColor,
-                shape = RoundedCornerShape(14.dp),
-            )
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (active) ReturnBgColor else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
-            color = if (active) AccentFgColor else ToolbarTextColor,
-            fontSize = 13.sp,
+            color = if (active) ReturnFgColor else ToolbarTextColor,
+            fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
         )
     }
@@ -279,7 +279,7 @@ private fun EmojiPanel(
         },
         modifier = Modifier
             .fillMaxWidth()
-            .height(234.dp),
+            .height(236.dp),
     )
 }
 
@@ -297,7 +297,7 @@ private fun KaomojiPanel(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(234.dp)
+            .height(236.dp)
             .padding(horizontal = 6.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -308,7 +308,7 @@ private fun KaomojiPanel(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             categories.forEach { cat ->
-                ToolbarChip(
+                ToolbarIcon(
                     label = cat,
                     active = cat == selectedCategory,
                     onClick = { selectedCategory = cat },
@@ -325,7 +325,8 @@ private fun KaomojiPanel(
             items(filtered) { item ->
                 Box(
                     modifier = Modifier
-                        .background(KeyBgColor, RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(KeyBgColor)
                         .clickable { onSelect(item.text) }
                         .padding(horizontal = 8.dp, vertical = 10.dp),
                     contentAlignment = Alignment.Center,
@@ -345,6 +346,8 @@ private fun KaomojiPanel(
 @Composable
 private fun TouchKeyGrid(
     rows: List<List<String>>,
+    layoutId: String,
+    isAlphaLayer: Boolean,
     shiftState: ShiftState,
     returnAction: ReturnAction,
     accentPopup: AccentPopupState?,
@@ -362,9 +365,9 @@ private fun TouchKeyGrid(
     val glideStepPx = with(density) { 14.dp.toPx() }
     val accentCellWidthPx = with(density) { 38.dp.toPx() }
 
-    val keyBounds = remember { mutableMapOf<String, Rect>() }
-    val pressedKeys = remember { mutableStateMapOf<String, Boolean>() }
-    val activePointers = remember { mutableMapOf<PointerId, ActivePointer>() }
+    val keyBounds = remember(rows) { mutableMapOf<String, Rect>() }
+    val pressedKeys = remember(rows) { mutableStateMapOf<String, Boolean>() }
+    val activePointers = remember(rows) { mutableMapOf<PointerId, ActivePointer>() }
     var gridCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
     val latestShift by rememberUpdatedState(shiftState)
@@ -383,21 +386,20 @@ private fun TouchKeyGrid(
                 awaitEachGesture {
                     while (true) {
                         val event = awaitPointerEvent()
-                        val rootWindowOffset = gridCoords?.boundsInWindow()?.topLeft ?: Offset.Zero
 
                         for (change in event.changes) {
-                            val windowPos = change.position + rootWindowOffset
+                            val localPos = change.position
                             val id = change.id
 
                             if (change.pressed && !change.previousPressed) {
-                                val hitKey = findHitKey(keyBounds, windowPos) ?: continue
+                                val hitKey = findHitKey(keyBounds, localPos) ?: continue
                                 pressedKeys[hitKey] = true
                                 latestOnKeyFeedback()
 
                                 val pointer = ActivePointer(
                                     keyId = hitKey,
-                                    startPosition = windowPos,
-                                    lastGlideX = windowPos.x,
+                                    startPosition = localPos,
+                                    lastGlideX = localPos.x,
                                 )
 
                                 when (hitKey) {
@@ -427,15 +429,13 @@ private fun TouchKeyGrid(
                                             val rect = keyBounds[hitKey]
                                             pointer.longPressJob = scope.launch {
                                                 delay(350L)
-                                                val localX = (rect?.left ?: windowPos.x) - rootWindowOffset.x
-                                                val localY = (rect?.top ?: windowPos.y) - rootWindowOffset.y
                                                 onShowAccentPopup(
                                                     AccentPopupState(
                                                         baseKey = baseChar,
                                                         variants = variants,
                                                         selectedIndex = 0,
-                                                        anchorX = localX,
-                                                        anchorY = localY,
+                                                        anchorX = rect?.left ?: localPos.x,
+                                                        anchorY = rect?.top ?: localPos.y,
                                                     ),
                                                 )
                                             }
@@ -448,13 +448,13 @@ private fun TouchKeyGrid(
                             } else if (change.pressed && change.previousPressed) {
                                 val pointer = activePointers[id] ?: continue
                                 if (pointer.keyId == "SPACE") {
-                                    val totalDx = windowPos.x - pointer.startPosition.x
+                                    val totalDx = localPos.x - pointer.startPosition.x
                                     if (!pointer.isGliding && kotlin.math.abs(totalDx) > glideThresholdPx) {
                                         pointer.isGliding = true
-                                        pointer.lastGlideX = windowPos.x
+                                        pointer.lastGlideX = localPos.x
                                     }
                                     if (pointer.isGliding) {
-                                        val stepDx = windowPos.x - pointer.lastGlideX
+                                        val stepDx = localPos.x - pointer.lastGlideX
                                         val steps = (stepDx / glideStepPx).toInt()
                                         if (steps != 0) {
                                             latestOnMoveCursor(steps)
@@ -464,7 +464,7 @@ private fun TouchKeyGrid(
                                 } else {
                                     val popup = latestPopup
                                     if (popup != null) {
-                                        val dx = windowPos.x - pointer.startPosition.x
+                                        val dx = localPos.x - pointer.startPosition.x
                                         val deltaIndex = (dx / accentCellWidthPx).roundToInt()
                                         val nextIndex = deltaIndex.coerceIn(0, popup.variants.lastIndex)
                                         if (nextIndex != popup.selectedIndex) {
@@ -501,40 +501,58 @@ private fun TouchKeyGrid(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 3.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+                .padding(horizontal = 4.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            rows.forEach { row ->
+            rows.forEachIndexed { rowIndex, row ->
+                val centerNineKeyRow = isAlphaLayer && rowIndex == 1 && row.size == 9
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(54.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        .height(52.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
+                    if (centerNineKeyRow) {
+                        Spacer(modifier = Modifier.weight(0.5f))
+                    }
                     row.forEach { keyId ->
                         val weight = keyWeightFor(keyId)
+                        val isPill = isPillKey(keyId)
                         val isAction = isActionKey(keyId)
                         val isPressed = pressedKeys[keyId] == true
                         val isReturn = keyId == "RETURN"
                         val isShiftActive = keyId == "SHIFT" && shiftState != ShiftState.OFF
 
                         val bg = when {
-                            isReturn -> AccentBgColor
+                            isReturn -> ReturnBgColor
                             isShiftActive -> KeyPressedColor
                             isPressed -> KeyPressedColor
+                            isPill -> PillKeyBgColor
                             isAction -> ActionKeyBgColor
                             else -> KeyBgColor
                         }
-                        val fg = if (isReturn) AccentFgColor else Color.White
+                        val fg = if (isReturn) ReturnFgColor else Color.White
+                        val shape: Shape = if (isPill) RoundedCornerShape(50) else RoundedCornerShape(8.dp)
+                        val hint = if (isAlphaLayer) KeyboardStateLogic.hintForKey(layoutId, keyId) else null
 
                         KeyCap(
                             keyId = keyId,
                             label = KeyboardStateLogic.resolveKeyLabel(keyId, shiftState, returnAction),
+                            hint = hint,
                             weight = weight,
+                            shape = shape,
                             backgroundColor = bg,
                             foregroundColor = fg,
-                            onBoundsChanged = { rect -> keyBounds[keyId] = rect },
+                            onBoundsChanged = { coords ->
+                                val parent = gridCoords ?: return@KeyCap
+                                if (parent.isAttached && coords.isAttached) {
+                                    keyBounds[keyId] = parent.localBoundingBoxOf(coords, clipBounds = false)
+                                }
+                            },
                         )
+                    }
+                    if (centerNineKeyRow) {
+                        Spacer(modifier = Modifier.weight(0.5f))
                     }
                 }
             }
@@ -562,7 +580,7 @@ private fun TouchKeyGrid(
                                 .widthIn(min = 34.dp)
                                 .height(40.dp)
                                 .background(
-                                    color = if (selected) AccentBgColor else Color.Transparent,
+                                    color = if (selected) ReturnBgColor else Color.Transparent,
                                     shape = RoundedCornerShape(6.dp),
                                 )
                                 .padding(horizontal = 6.dp),
@@ -570,7 +588,7 @@ private fun TouchKeyGrid(
                         ) {
                             Text(
                                 text = variant,
-                                color = if (selected) AccentFgColor else Color.White,
+                                color = if (selected) ReturnFgColor else Color.White,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Medium,
                             )
@@ -586,27 +604,43 @@ private fun TouchKeyGrid(
 private fun RowScope.KeyCap(
     keyId: String,
     label: String,
+    hint: String?,
     weight: Float,
+    shape: Shape,
     backgroundColor: Color,
     foregroundColor: Color,
-    onBoundsChanged: (Rect) -> Unit,
+    onBoundsChanged: (LayoutCoordinates) -> Unit,
 ) {
+    // Bottom 1.5dp shadow lip gives Gboard's tactile non-flat keycap depth
     Box(
         modifier = Modifier
             .weight(weight)
-            .height(54.dp)
-            .onGloballyPositioned { coords ->
-                onBoundsChanged(coords.boundsInWindow())
-            }
-            .background(backgroundColor, RoundedCornerShape(6.dp)),
-        contentAlignment = Alignment.Center,
+            .height(52.dp)
+            .onGloballyPositioned(onBoundsChanged)
+            .background(KeyShadowColor, shape)
+            .padding(bottom = 1.5.dp)
+            .background(backgroundColor, shape),
     ) {
+        if (hint != null) {
+            Text(
+                text = hint,
+                color = HintTextColor,
+                fontSize = 10.sp,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 3.dp, end = 5.dp),
+            )
+        }
         Text(
             text = label,
             color = foregroundColor,
-            fontSize = if (keyId == "SPACE" || keyId == "RETURN" || keyId == "SYMBOLS" || keyId == "ALPHA") 14.sp else 20.sp,
+            fontSize = when (keyId) {
+                "SPACE", "RETURN", "SYMBOLS", "MORE_SYMBOLS", "ALPHA" -> 14.sp
+                else -> 21.sp
+            },
             fontWeight = if (isActionKey(keyId)) FontWeight.Medium else FontWeight.Normal,
             maxLines = 1,
+            modifier = Modifier.align(Alignment.Center),
         )
     }
 }
@@ -619,16 +653,22 @@ private fun findHitKey(bounds: Map<String, Rect>, pos: Offset): String? {
 }
 
 private fun keyWeightFor(keyId: String): Float = when (keyId) {
-    "SPACE" -> 4.5f
+    "SPACE" -> 4.0f
     "SHIFT", "BACKSPACE", "SYMBOLS", "MORE_SYMBOLS", "ALPHA", "RETURN" -> 1.5f
     else -> 1f
 }
 
-private fun isActionKey(keyId: String): Boolean = keyId in setOf(
+private fun isPillKey(keyId: String): Boolean = keyId in setOf(
     "SHIFT",
     "BACKSPACE",
     "SYMBOLS",
     "MORE_SYMBOLS",
     "ALPHA",
     "RETURN",
+)
+
+private fun isActionKey(keyId: String): Boolean = isPillKey(keyId) || keyId in setOf(
+    ",",
+    ".",
+    "EMOJI_KEY",
 )

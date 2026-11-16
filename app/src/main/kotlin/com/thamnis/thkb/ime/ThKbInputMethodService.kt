@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -66,10 +67,13 @@ class ThKbInputMethodService :
     }
 
     override fun onCreateInputView(): View {
-        window?.window?.decorView?.let { decorView ->
-            decorView.setViewTreeLifecycleOwner(this)
-            decorView.setViewTreeSavedStateRegistryOwner(this)
-            decorView.setViewTreeViewModelStoreOwner(this)
+        window?.window?.let { win ->
+            WindowCompat.setDecorFitsSystemWindows(win, false)
+            @Suppress("DEPRECATION")
+            win.navigationBarColor = 0xFF1B1C1E.toInt()
+            win.decorView.setViewTreeLifecycleOwner(this)
+            win.decorView.setViewTreeSavedStateRegistryOwner(this)
+            win.decorView.setViewTreeViewModelStoreOwner(this)
         }
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)

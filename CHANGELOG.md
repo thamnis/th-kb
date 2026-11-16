@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Enabled `WindowCompat.setDecorFitsSystemWindows(win, false)` on the IME window so `navigationBarsPadding()` cleanly reserves the bottom system dismiss/IME-switcher bar on Pixel 7a.
+- Switched `TouchKeyGrid` hit-testing to `localBoundingBoxOf` scoped per layout/layer (`remember(rows)`) so tapped keys always match the displayed layout.
+- Matched Gboard's exact layer layouts (`qwerty_en`, `azerty_fr`, `symbols`, `symbols_more`), pill-shaped action keys, tactile keycap depth, centered 9-key row, and layout-aware top-right sub-label hints.
+
 ### Added
 - `v0.1` Gboard-parity IME core: `ThKbInputMethodService` with `LifecycleOwner`, `SavedStateRegistryOwner`, and `ViewModelStoreOwner` bridge, dynamic `EditorInfo.imeOptions` return action, subtype-aware layout switching (`en_US` / `fr_FR`), haptic/sound key feedback, paste action, and spacebar cursor glide (`setSelection` with `DPAD_LEFT/RIGHT` fallback).
 - Raw `pointerInput` (`awaitEachGesture`) multi-touch key grid (`KeyboardRoot`) with `44dp` top toolbar, `4 × 54dp` key rows, 3-state Shift, tap/hold Delete, `?123` / `=\<` symbol layers, and multi-character long-press accent popups.

@@ -65,7 +65,8 @@ object KeyboardStateLogic {
             "SYMBOLS" -> "?123"
             "MORE_SYMBOLS" -> "=\\<"
             "ALPHA" -> "ABC"
-            "SPACE" -> "th-kb"
+            "EMOJI_KEY" -> "☺"
+            "SPACE" -> "EN • FR"
             "RETURN" -> returnAction.label
             else -> if (shiftState != ShiftState.OFF && rawKey.length == 1 && rawKey[0].isLetter()) {
                 rawKey.uppercase()
@@ -73,6 +74,27 @@ object KeyboardStateLogic {
                 rawKey
             }
         }
+
+    private val qwertyHints = mapOf(
+        "q" to "1", "w" to "2", "e" to "3", "r" to "4", "t" to "5",
+        "y" to "6", "u" to "7", "i" to "8", "o" to "9", "p" to "0",
+        "a" to "@", "s" to "#", "d" to "$", "f" to "_", "g" to "&",
+        "h" to "-", "j" to "+", "k" to "(", "l" to ")",
+        "z" to "*", "x" to "\"", "c" to "'", "v" to ":", "b" to ";",
+        "n" to "!", "m" to "?",
+    )
+
+    private val azertyHints = mapOf(
+        "a" to "1", "z" to "2", "e" to "3", "r" to "4", "t" to "5",
+        "y" to "6", "u" to "7", "i" to "8", "o" to "9", "p" to "0",
+        "q" to "@", "s" to "#", "d" to "$", "f" to "_", "g" to "&",
+        "h" to "-", "j" to "+", "k" to "(", "l" to ")", "m" to "?",
+        "w" to "*", "x" to "\"", "c" to "'", "v" to ":", "b" to ";",
+        "n" to "!",
+    )
+
+    fun hintForKey(layoutId: String, rawKey: String): String? =
+        if (layoutId == "azerty_fr") azertyHints[rawKey.lowercase()] else qwertyHints[rawKey.lowercase()]
 
     fun resolveReturnAction(imeOptions: Int): ReturnAction {
         val noEnterAction = (imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0
