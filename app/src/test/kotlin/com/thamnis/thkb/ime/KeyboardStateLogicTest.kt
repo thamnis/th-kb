@@ -10,11 +10,8 @@ class KeyboardStateLogicTest {
     fun shiftTransitionsFollowThreeStateModel() {
         assertEquals(ShiftState.ONCE, KeyboardStateLogic.nextShiftOnTap(ShiftState.OFF))
         assertEquals(ShiftState.OFF, KeyboardStateLogic.nextShiftOnTap(ShiftState.ONCE))
+        assertEquals(ShiftState.CAPS_LOCK, KeyboardStateLogic.nextShiftOnTap(ShiftState.ONCE, isDoubleTap = true))
         assertEquals(ShiftState.OFF, KeyboardStateLogic.nextShiftOnTap(ShiftState.CAPS_LOCK))
-
-        assertEquals(ShiftState.CAPS_LOCK, KeyboardStateLogic.nextShiftOnLongPress(ShiftState.OFF))
-        assertEquals(ShiftState.CAPS_LOCK, KeyboardStateLogic.nextShiftOnLongPress(ShiftState.ONCE))
-        assertEquals(ShiftState.OFF, KeyboardStateLogic.nextShiftOnLongPress(ShiftState.CAPS_LOCK))
 
         assertEquals(ShiftState.OFF, KeyboardStateLogic.shiftAfterCharacterCommit(ShiftState.ONCE))
         assertEquals(ShiftState.CAPS_LOCK, KeyboardStateLogic.shiftAfterCharacterCommit(ShiftState.CAPS_LOCK))

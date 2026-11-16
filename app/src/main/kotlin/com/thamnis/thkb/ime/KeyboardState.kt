@@ -38,10 +38,11 @@ data class AccentPopupState(
 )
 
 object KeyboardStateLogic {
-    fun nextShiftOnTap(current: ShiftState): ShiftState = when (current) {
-        ShiftState.OFF -> ShiftState.ONCE
-        ShiftState.ONCE -> ShiftState.OFF
-        ShiftState.CAPS_LOCK -> ShiftState.OFF
+    fun nextShiftOnTap(current: ShiftState, isDoubleTap: Boolean = false): ShiftState = when {
+        isDoubleTap && current == ShiftState.ONCE -> ShiftState.CAPS_LOCK
+        current == ShiftState.OFF -> ShiftState.ONCE
+        current == ShiftState.ONCE -> ShiftState.OFF
+        else -> ShiftState.OFF
     }
 
     fun nextShiftOnLongPress(current: ShiftState): ShiftState = when (current) {

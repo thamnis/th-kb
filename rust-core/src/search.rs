@@ -22,7 +22,10 @@ pub fn search_kaomoji_from_json(kaomoji_json: &str, query: &str) -> Vec<KaomojiE
         .into_iter()
         .filter(|entry| {
             entry.category.to_lowercase().contains(&needle)
-                || entry.tags.iter().any(|t| t.to_lowercase().contains(&needle))
+                || entry
+                    .tags
+                    .iter()
+                    .any(|t| t.to_lowercase().contains(&needle))
         })
         .collect()
 }

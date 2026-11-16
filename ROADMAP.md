@@ -1,6 +1,6 @@
 # Roadmap
 
-> Development follows a `v0.x` private POC and stabilization phase before the `v1.0` public release.
+> Development follows a `v0.x` private POC and stabilization phase before the `v1.0` public release. All `v0.x` pre-release git tags must be tagged as `alpha` (e.g. `v0.1.0-alpha.1`).
 
 ## `v0.1` — Gboard-Parity POC (Internal)
 
@@ -21,6 +21,7 @@
 - [ ] **Delete to the right** (forward delete via `deleteSurroundingText(0, 1)`)
 - [ ] **Context-aware typing** (`EditorInfo.inputType` + `packageName` auto-switching for coding/terminals, messaging, numeric-only, URL, password)
 - [ ] Multi-item clipboard history
+- [ ] **Emoji & Kaomoji favorites** (pinned/starred emojis and kaomojis tab)
 
 ## `v1.0` — Public Release
 
@@ -47,5 +48,7 @@
 
 ## `v2.0` — Intelligence
 
+- [ ] **Word suggestions & completion** (top-bar suggestion candidates backed by `rust-core`)
+- [ ] **Dictionaries (`en`, `fr`) & Personal dictionary** (offline EN/FR lexicons + user-learned/custom words)
 - [ ] **Glided typing** (swipe path sampling + Rust trie/beam-search decoder)
 - [ ] **Hands-free typing** (`SpeechRecognizer` / offline ASR)

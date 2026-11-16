@@ -10,6 +10,7 @@ data class KbSettings(
     val layoutId: String = DEFAULT_LAYOUT_ID,
     val hapticsEnabled: Boolean = true,
     val soundEnabled: Boolean = false,
+    val autoCapOnOpen: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_LAYOUT_ID = "qwerty_en"
@@ -46,11 +47,17 @@ class KbPreferences(context: Context) {
         _settings.value = readSettings()
     }
 
+    fun setAutoCapOnOpen(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO_CAP_ON_OPEN, enabled).apply()
+        _settings.value = readSettings()
+    }
+
     private fun readSettings(): KbSettings = KbSettings(
         layoutId = prefs.getString(KEY_LAYOUT_ID, KbSettings.DEFAULT_LAYOUT_ID)
             ?: KbSettings.DEFAULT_LAYOUT_ID,
         hapticsEnabled = prefs.getBoolean(KEY_HAPTICS, true),
         soundEnabled = prefs.getBoolean(KEY_SOUND, false),
+        autoCapOnOpen = prefs.getBoolean(KEY_AUTO_CAP_ON_OPEN, true),
     )
 
     companion object {
@@ -58,5 +65,6 @@ class KbPreferences(context: Context) {
         private const val KEY_LAYOUT_ID = "layout_id"
         private const val KEY_HAPTICS = "haptics_enabled"
         private const val KEY_SOUND = "sound_enabled"
+        private const val KEY_AUTO_CAP_ON_OPEN = "auto_cap_on_open"
     }
 }

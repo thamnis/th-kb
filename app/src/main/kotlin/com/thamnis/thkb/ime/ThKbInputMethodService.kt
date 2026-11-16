@@ -56,6 +56,7 @@ class ThKbInputMethodService :
     private var returnAction by mutableStateOf(ReturnAction.DEFAULT)
     private var activeEditorAction by mutableStateOf(EditorInfo.IME_ACTION_NONE)
     private var subtypeLayoutOverride by mutableStateOf<String?>(null)
+    private var inputSessionKey by mutableStateOf(0)
 
     override fun onCreate() {
         super.onCreate()
@@ -69,6 +70,7 @@ class ThKbInputMethodService :
     override fun onCreateInputView(): View {
         window?.window?.let { win ->
             WindowCompat.setDecorFitsSystemWindows(win, false)
+            win.setBackgroundDrawableResource(android.R.color.transparent)
             @Suppress("DEPRECATION")
             win.navigationBarColor = 0xFF1B1C1E.toInt()
             win.decorView.setViewTreeLifecycleOwner(this)
@@ -90,7 +92,9 @@ class ThKbInputMethodService :
                 val effectiveLayoutId = subtypeLayoutOverride ?: settings.layoutId
 
                 KeyboardRoot(
+                    inputSessionKey = inputSessionKey,
                     layoutId = effectiveLayoutId,
+                    autoCapOnOpen = settings.autoCapOnOpen,
                     returnAction = returnAction,
                     assets = assets,
                     onKeyFeedback = {
@@ -103,7 +107,7 @@ class ThKbInputMethodService :
                         currentInputConnection?.commitText(text, 1)
                     },
                     onBackspace = {
-                        currentInputConnection?.deleteSurroundingText(1, 0)
+                        performBackspace()
                     },
                     onReturn = {
                         performReturnAction()
@@ -126,10 +130,26 @@ class ThKbInputMethodService :
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        if (!restarting) {
+            inputSessionKey++
+        }
         val imeOptions = info?.imeOptions ?: 0
         returnAction = KeyboardStateLogic.resolveReturnAction(imeOptions)
         activeEditorAction = imeOptions and EditorInfo.IME_MASK_ACTION
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+    }
+
+    override fun onComputeInsets(outInsets: Insets?) {
+        super.onComputeInsets(outInsets)
+        if (outInsets == null) return
+        val headroomPx = (TOP_POPUP_HEADROOM_DP * resources.displayMetrics.density).toInt()
+        outInsets.contentTopInsets = headroomPx
+        outInsets.visibleTopInsets = headroomPx
+        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_CONTENT
+    }
+
+    companion object {
+        const val TOP_POPUP_HEADROOM_DP = 68
     }
 
     override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype?) {
@@ -151,6 +171,21 @@ class ThKbInputMethodService :
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         viewModelStore.clear()
         super.onDestroy()
+    }
+
+    private fun performBackspace() {
+        val ic = currentInputConnection ?: return
+        ic.beginBatchEdit()
+        try {
+            val selected = ic.getSelectedText(0)
+            if (!selected.isNullOrEmpty()) {
+                ic.commitText("", 1)
+            } else if (!ic.deleteSurroundingText(1, 0)) {
+                sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
+            }
+        } finally {
+            ic.endBatchEdit()
+        }
     }
 
     private fun performReturnAction() {

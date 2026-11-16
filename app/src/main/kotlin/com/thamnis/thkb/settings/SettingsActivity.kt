@@ -88,6 +88,21 @@ class SettingsActivity : ComponentActivity() {
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
+                                text = "Enable Shift when opening keyboard",
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Switch(
+                                checked = settings.autoCapOnOpen,
+                                onCheckedChange = { preferences.setAutoCapOnOpen(it) },
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
                                 text = "Haptic feedback on keypress",
                                 style = MaterialTheme.typography.bodyLarge,
                             )
