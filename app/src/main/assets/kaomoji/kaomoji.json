@@ -1,0 +1,8 @@
+[
+  { "text": "(^_^)", "category": "happy", "tags": ["smile", "joy", "happy"] },
+  { "text": "(≧▽≦)", "category": "happy", "tags": ["excited", "joy"] },
+  { "text": "¯\\_(ツ)_/¯", "category": "shrug", "tags": ["shrug", "dunno", "meh"] },
+  { "text": "(╯°□°)╯︵ ┻━┻", "category": "angry", "tags": ["tableflip", "rage", "angry"] },
+  { "text": "(ಥ﹏ಥ)", "category": "sad", "tags": ["cry", "sad", "tears"] },
+  { "text": "(づ｡◕‿‿◕｡)づ", "category": "love", "tags": ["hug", "cute", "love"] }
+]

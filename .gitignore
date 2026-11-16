@@ -1,0 +1,32 @@
+# Gradle & Android
+.gradle/
+build/
+*/build/
+local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Native libraries & generated UniFFI bindings (built via cargo-ndk / uniffi-bindgen)
+app/src/main/jniLibs/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+.navigation/
+.cxx/
+
+# Rust
+rust-core/target/
+desktop-companion/target/
+**/*.rs.bk
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
