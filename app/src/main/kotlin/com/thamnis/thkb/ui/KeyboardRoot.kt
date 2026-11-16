@@ -1,5 +1,6 @@
 package com.thamnis.thkb.ui
 
+import android.view.KeyEvent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,9 +19,12 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,15 +33,20 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.Backspace
 import androidx.compose.material.icons.automirrored.outlined.KeyboardReturn
 import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.ContentPaste
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SentimentSatisfied
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -63,6 +72,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
@@ -70,6 +80,8 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -77,8 +89,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.emoji2.emojipicker.EmojiPickerView
 import com.thamnis.thkb.data.AssetRepository
+import com.thamnis.thkb.data.ClipboardEntry
+import com.thamnis.thkb.data.EmojiSection
 import com.thamnis.thkb.data.KaomojiItem
 import com.thamnis.thkb.ime.AccentPopupState
+import com.thamnis.thkb.ime.InputContext
 import com.thamnis.thkb.ime.KeyboardLayer
 import com.thamnis.thkb.ime.KeyboardStateLogic
 import com.thamnis.thkb.ime.PanelMode
@@ -88,6 +103,7 @@ import com.thamnis.thkb.ime.ThKbInputMethodService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private val BgColor = Color(0xFF1B1C1E)
@@ -105,7 +121,9 @@ private data class ActivePointer(
     val keyId: String,
     val startPosition: Offset,
     var lastGlideX: Float,
+    var lastGlideY: Float,
     var isGliding: Boolean = false,
+    var deleteGestureTriggered: Boolean = false,
     var longPressJob: Job? = null,
     var repeatJob: Job? = null,
 )
@@ -114,35 +132,80 @@ private data class ActivePointer(
 fun KeyboardRoot(
     inputSessionKey: Int = 0,
     layoutId: String,
+    inputContext: InputContext = InputContext.NORMAL,
     autoCapOnOpen: Boolean = true,
+    longPressDelayMs: Long = 450L,
+    rapidDeleteDelayMs: Long = 580L,
+    deleteGesturesEnabled: Boolean = true,
+    resetForwardDeleteOnChar: Boolean = false,
+    emojiGridColumns: Int = 7,
     returnAction: ReturnAction,
     assets: AssetRepository,
+    clipboardEntries: List<ClipboardEntry> = emptyList(),
+    favoriteItems: Set<String> = emptySet(),
+    recentEmojis: List<String> = emptyList(),
+    onToggleFavorite: (String) -> Unit = {},
+    onRecordRecentEmoji: (String) -> Unit = {},
+    onPinClip: (String) -> Unit = {},
+    onDeleteClip: (String) -> Unit = {},
+    onClearUnpinnedClips: () -> Unit = {},
     onKeyFeedback: () -> Unit,
     onCommitText: (String) -> Unit,
     onBackspace: () -> Unit,
+    onForwardDelete: () -> Unit = {},
+    onDeleteWord: (Boolean) -> Unit = {},
+    onDeleteParagraph: (Boolean) -> Unit = {},
+    onSendKeyEvent: (Int) -> Unit = {},
+    onSendCtrlKey: (Char) -> Unit = {},
     onReturn: () -> Unit,
     onPaste: () -> Unit,
     onMoveCursor: (Int) -> Unit,
+    onMoveCursorVertical: (Int) -> Unit = {},
+    shouldAutoCapNow: () -> Boolean = { false },
     onOpenSettings: () -> Unit,
 ) {
     var shiftState by remember(inputSessionKey, autoCapOnOpen) {
         mutableStateOf(if (autoCapOnOpen) ShiftState.ONCE else ShiftState.OFF)
     }
     var lastShiftTapMs by remember(inputSessionKey) { mutableStateOf(0L) }
-    var layer by remember(inputSessionKey) { mutableStateOf(KeyboardLayer.ALPHA) }
+    var layer by remember(inputSessionKey, inputContext) {
+        mutableStateOf(KeyboardStateLogic.initialLayerForContext(inputContext))
+    }
     var panelMode by remember(inputSessionKey) { mutableStateOf(PanelMode.KEYBOARD) }
     var accentPopup by remember(inputSessionKey) { mutableStateOf<AccentPopupState?>(null) }
+    var isForwardDeleteMode by remember(inputSessionKey) { mutableStateOf(false) }
+    var ctrlActive by remember(inputSessionKey) { mutableStateOf(false) }
     var scrollPanelHeightDp by remember { mutableStateOf(250f) }
     val density = LocalDensity.current
     var rootWidthPx by remember { mutableStateOf(1080f) }
+
+    val canResizePanel = panelMode == PanelMode.EMOJI ||
+        panelMode == PanelMode.KAOMOJI ||
+        (panelMode == PanelMode.CLIPBOARD && clipboardEntries.size > 4)
 
     val activeLayoutId = when (layer) {
         KeyboardLayer.ALPHA -> layoutId
         KeyboardLayer.SYMBOLS -> "symbols"
         KeyboardLayer.SYMBOLS_MORE -> "symbols_more"
     }
-    val rows = remember(activeLayoutId) { assets.loadLayout(activeLayoutId) }
+    val rawRows = remember(activeLayoutId) { assets.loadLayout(activeLayoutId) }
+    val rows = remember(rawRows, layer, inputContext) {
+        if (layer != KeyboardLayer.ALPHA) {
+            rawRows
+        } else {
+            when (inputContext) {
+                InputContext.URL -> rawRows.mapIndexed { idx, r ->
+                    if (idx == 3) r.map { if (it == ",") "/" else it } else r
+                }
+                InputContext.EMAIL -> rawRows.mapIndexed { idx, r ->
+                    if (idx == 3) r.map { if (it == ",") "@" else it } else r
+                }
+                else -> rawRows
+            }
+        }
+    }
     val kaomojiItems = remember { assets.loadKaomoji() }
+    val emojiSections = remember { assets.loadEmojiSections() }
 
     Box(
         modifier = Modifier
@@ -155,7 +218,6 @@ fun KeyboardRoot(
                     .fillMaxWidth()
                     .height(ThKbInputMethodService.TOP_POPUP_HEADROOM_DP.dp),
             )
-            // Keep navigationBarsPadding + 10.dp bottom elevation INSIDE Surface so BgColor fills the bottom void
             Surface(
                 color = BgColor,
                 modifier = Modifier.fillMaxWidth(),
@@ -168,7 +230,8 @@ fun KeyboardRoot(
                 ) {
                     ToolbarRow(
                         panelMode = panelMode,
-                        isExpanded = scrollPanelHeightDp > 300f,
+                        canResize = canResizePanel,
+                        isExpanded = canResizePanel && scrollPanelHeightDp > 300f,
                         onResizeDeltaDp = { deltaDp ->
                             scrollPanelHeightDp = (scrollPanelHeightDp - deltaDp).coerceIn(236f, 460f)
                         },
@@ -178,9 +241,8 @@ fun KeyboardRoot(
                         onToggleEmoji = {
                             panelMode = if (panelMode == PanelMode.EMOJI) PanelMode.KEYBOARD else PanelMode.EMOJI
                         },
-                        onPaste = {
-                            onKeyFeedback()
-                            onPaste()
+                        onToggleClipboard = {
+                            panelMode = if (panelMode == PanelMode.CLIPBOARD) PanelMode.KEYBOARD else PanelMode.CLIPBOARD
                         },
                         onOpenSettings = {
                             onKeyFeedback()
@@ -188,12 +250,40 @@ fun KeyboardRoot(
                         },
                     )
 
+                    if (inputContext == InputContext.TERMINAL && panelMode == PanelMode.KEYBOARD) {
+                        TerminalQuickBar(
+                            ctrlActive = ctrlActive,
+                            onToggleCtrl = {
+                                onKeyFeedback()
+                                ctrlActive = !ctrlActive
+                            },
+                            onSendKey = { keyCode ->
+                                onKeyFeedback()
+                                onSendKeyEvent(keyCode)
+                            },
+                            onCommitText = { text ->
+                                onKeyFeedback()
+                                onCommitText(text)
+                            },
+                        )
+                    }
+
                     when (panelMode) {
                         PanelMode.EMOJI, PanelMode.KAOMOJI -> {
                             EmojiAndKaomojiPanel(
                                 panelHeightDp = scrollPanelHeightDp,
+                                emojiGridColumns = emojiGridColumns,
+                                emojiSections = emojiSections,
                                 kaomojiItems = kaomojiItems,
-                                onCommit = { text ->
+                                favoriteItems = favoriteItems,
+                                recentEmojis = recentEmojis,
+                                onToggleFavorite = onToggleFavorite,
+                                onCommitEmoji = { emoji ->
+                                    onKeyFeedback()
+                                    onRecordRecentEmoji(emoji)
+                                    onCommitText(emoji)
+                                },
+                                onCommitKaomoji = { text ->
                                     onKeyFeedback()
                                     onCommitText(text)
                                 },
@@ -204,6 +294,23 @@ fun KeyboardRoot(
                                 onBackspaceRepeat = onBackspace,
                             )
                         }
+                        PanelMode.CLIPBOARD -> {
+                            ClipboardPanel(
+                                panelHeightDp = if (canResizePanel) scrollPanelHeightDp else 250f,
+                                entries = clipboardEntries,
+                                onCommitClip = { text ->
+                                    onKeyFeedback()
+                                    onCommitText(text)
+                                },
+                                onSystemPaste = {
+                                    onKeyFeedback()
+                                    onPaste()
+                                },
+                                onPinClip = onPinClip,
+                                onDeleteClip = onDeleteClip,
+                                onClearUnpinned = onClearUnpinnedClips,
+                            )
+                        }
                         PanelMode.KEYBOARD -> {
                             TouchKeyGrid(
                                 rows = rows,
@@ -211,15 +318,23 @@ fun KeyboardRoot(
                                 isAlphaLayer = layer == KeyboardLayer.ALPHA,
                                 rootWidthPx = rootWidthPx,
                                 shiftState = shiftState,
+                                isForwardDeleteMode = isForwardDeleteMode,
+                                longPressDelayMs = longPressDelayMs,
+                                rapidDeleteDelayMs = rapidDeleteDelayMs,
+                                deleteGesturesEnabled = deleteGesturesEnabled,
                                 returnAction = returnAction,
                                 accentPopup = accentPopup,
                                 assets = assets,
                                 onShowAccentPopup = { accentPopup = it },
+                                onToggleForwardDeleteMode = {
+                                    isForwardDeleteMode = !isForwardDeleteMode
+                                },
                                 onKeyFeedback = onKeyFeedback,
                                 onKeyAction = { keyId, fromAccent ->
                                     if (fromAccent != null) {
                                         onCommitText(fromAccent)
                                         shiftState = KeyboardStateLogic.shiftAfterCharacterCommit(shiftState)
+                                        if (resetForwardDeleteOnChar) isForwardDeleteMode = false
                                         return@TouchKeyGrid
                                     }
                                     when (keyId) {
@@ -229,14 +344,35 @@ fun KeyboardRoot(
                                             shiftState = KeyboardStateLogic.nextShiftOnTap(shiftState, isDoubleTap)
                                             lastShiftTapMs = if (shiftState == ShiftState.CAPS_LOCK) 0L else now
                                         }
-                                        "BACKSPACE" -> onBackspace()
+                                        "BACKSPACE" -> {
+                                            if (isForwardDeleteMode) onForwardDelete() else onBackspace()
+                                            if (shiftState == ShiftState.OFF && shouldAutoCapNow()) {
+                                                shiftState = ShiftState.ONCE
+                                            }
+                                        }
                                         "SYMBOLS" -> layer = KeyboardLayer.SYMBOLS
                                         "MORE_SYMBOLS" -> layer = KeyboardLayer.SYMBOLS_MORE
                                         "ALPHA" -> layer = KeyboardLayer.ALPHA
                                         "EMOJI_KEY" -> panelMode = PanelMode.EMOJI
-                                        "SPACE" -> onCommitText(" ")
-                                        "RETURN" -> onReturn()
+                                        "SPACE" -> {
+                                            onCommitText(" ")
+                                            if (resetForwardDeleteOnChar) isForwardDeleteMode = false
+                                            if (shiftState == ShiftState.OFF && shouldAutoCapNow()) {
+                                                shiftState = ShiftState.ONCE
+                                            }
+                                        }
+                                        "RETURN" -> {
+                                            onReturn()
+                                            if (shiftState == ShiftState.OFF && shouldAutoCapNow()) {
+                                                shiftState = ShiftState.ONCE
+                                            }
+                                        }
                                         else -> {
+                                            if (ctrlActive && keyId.length == 1 && keyId[0].isLetter()) {
+                                                onSendCtrlKey(keyId[0])
+                                                ctrlActive = false
+                                                return@TouchKeyGrid
+                                            }
                                             val output = KeyboardStateLogic.resolveKeyLabel(
                                                 rawKey = keyId,
                                                 shiftState = shiftState,
@@ -244,11 +380,21 @@ fun KeyboardRoot(
                                             )
                                             onCommitText(output)
                                             shiftState = KeyboardStateLogic.shiftAfterCharacterCommit(shiftState)
+                                            if (resetForwardDeleteOnChar) isForwardDeleteMode = false
                                         }
                                     }
                                 },
-                                onBackspaceRepeat = onBackspace,
+                                onBackspaceRepeat = {
+                                    if (isForwardDeleteMode) onForwardDelete() else onBackspace()
+                                },
+                                onDeleteWord = {
+                                    onDeleteWord(isForwardDeleteMode)
+                                },
+                                onDeleteParagraph = {
+                                    onDeleteParagraph(isForwardDeleteMode)
+                                },
                                 onMoveCursor = onMoveCursor,
+                                onMoveCursorVertical = onMoveCursorVertical,
                             )
                         }
                     }
@@ -316,23 +462,23 @@ fun KeyboardRoot(
 @Composable
 private fun ToolbarRow(
     panelMode: PanelMode,
+    canResize: Boolean,
     isExpanded: Boolean,
     onResizeDeltaDp: (Float) -> Unit,
     onToggleExpand: () -> Unit,
     onToggleEmoji: () -> Unit,
-    onPaste: () -> Unit,
+    onToggleClipboard: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     val density = LocalDensity.current
     val latestOnResize by rememberUpdatedState(onResizeDeltaDp)
-    val inScrollPanel = panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(44.dp)
             .then(
-                if (inScrollPanel) {
+                if (canResize) {
                     Modifier.pointerInput(Unit) {
                         detectVerticalDragGestures { change, dragAmount ->
                             change.consume()
@@ -345,7 +491,7 @@ private fun ToolbarRow(
                 },
             ),
     ) {
-        if (inScrollPanel) {
+        if (canResize) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -363,18 +509,26 @@ private fun ToolbarRow(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             ToolbarIconButton(
-                icon = if (inScrollPanel) Icons.Outlined.Keyboard else Icons.Outlined.EmojiEmotions,
+                icon = if (panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI) {
+                    Icons.Outlined.Keyboard
+                } else {
+                    Icons.Outlined.EmojiEmotions
+                },
                 contentDescription = "Emoji",
-                active = inScrollPanel,
+                active = panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI,
                 onClick = onToggleEmoji,
             )
             ToolbarIconButton(
-                icon = Icons.Outlined.ContentPaste,
-                contentDescription = "Paste",
-                active = false,
-                onClick = onPaste,
+                icon = if (panelMode == PanelMode.CLIPBOARD) {
+                    Icons.Outlined.Keyboard
+                } else {
+                    Icons.Outlined.ContentPaste
+                },
+                contentDescription = "Clipboard",
+                active = panelMode == PanelMode.CLIPBOARD,
+                onClick = onToggleClipboard,
             )
-            if (inScrollPanel) {
+            if (canResize) {
                 ToolbarIconButton(
                     icon = if (isExpanded) Icons.Outlined.KeyboardArrowDown else Icons.Outlined.KeyboardArrowUp,
                     contentDescription = "Resize",
@@ -388,6 +542,49 @@ private fun ToolbarRow(
                 active = false,
                 onClick = onOpenSettings,
             )
+        }
+    }
+}
+
+@Composable
+private fun TerminalQuickBar(
+    ctrlActive: Boolean,
+    onToggleCtrl: () -> Unit,
+    onSendKey: (Int) -> Unit,
+    onCommitText: (String) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(34.dp)
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CategoryChip(
+            label = "CTRL",
+            active = ctrlActive,
+            onClick = onToggleCtrl,
+        )
+        listOf(
+            "ESC" to { onSendKey(KeyEvent.KEYCODE_ESCAPE) },
+            "TAB" to { onSendKey(KeyEvent.KEYCODE_TAB) },
+            "^" to { onCommitText("^") },
+            "<" to { onCommitText("<") },
+            ">" to { onCommitText(">") },
+            "←" to { onSendKey(KeyEvent.KEYCODE_DPAD_LEFT) },
+            "↓" to { onSendKey(KeyEvent.KEYCODE_DPAD_DOWN) },
+            "↑" to { onSendKey(KeyEvent.KEYCODE_DPAD_UP) },
+            "→" to { onSendKey(KeyEvent.KEYCODE_DPAD_RIGHT) },
+            "-" to { onCommitText("-") },
+            "/" to { onCommitText("/") },
+            "|" to { onCommitText("|") },
+            "~" to { onCommitText("~") },
+            "&" to { onCommitText("&") },
+            "$" to { onCommitText("$") },
+        ).forEach { (label, action) ->
+            CategoryChip(label = label, active = false, onClick = action)
         }
     }
 }
@@ -440,14 +637,129 @@ private fun CategoryChip(
 }
 
 @Composable
+private fun ClipboardPanel(
+    panelHeightDp: Float,
+    entries: List<ClipboardEntry>,
+    onCommitClip: (String) -> Unit,
+    onSystemPaste: () -> Unit,
+    onPinClip: (String) -> Unit,
+    onDeleteClip: (String) -> Unit,
+    onClearUnpinned: () -> Unit,
+) {
+    val contentHeight = (panelHeightDp - 40f).coerceAtLeast(180f).dp
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(panelHeightDp.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(34.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CategoryChip(
+                label = "Paste from system",
+                active = true,
+                onClick = onSystemPaste,
+            )
+            if (entries.any { !it.pinned }) {
+                CategoryChip(
+                    label = "Clear unpinned",
+                    active = false,
+                    onClick = onClearUnpinned,
+                )
+            }
+        }
+
+        if (entries.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(contentHeight),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Clipboard history is empty",
+                    color = HintTextColor,
+                    fontSize = 14.sp,
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(contentHeight),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items(entries, key = { it.text }) { entry ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(KeyBgColor)
+                            .clickable { onCommitClip(entry.text) }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = entry.text,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp),
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = if (entry.pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                                contentDescription = "Pin",
+                                tint = if (entry.pinned) ReturnBgColor else HintTextColor,
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clickable { onPinClip(entry.text) },
+                            )
+                            Icon(
+                                imageVector = Icons.Outlined.Delete,
+                                contentDescription = "Delete",
+                                tint = HintTextColor,
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clickable { onDeleteClip(entry.text) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun EmojiAndKaomojiPanel(
     panelHeightDp: Float,
+    emojiGridColumns: Int,
+    emojiSections: List<EmojiSection>,
     kaomojiItems: List<KaomojiItem>,
-    onCommit: (String) -> Unit,
+    favoriteItems: Set<String>,
+    recentEmojis: List<String>,
+    onToggleFavorite: (String) -> Unit,
+    onCommitEmoji: (String) -> Unit,
+    onCommitKaomoji: (String) -> Unit,
     onBackspace: () -> Unit,
     onBackspaceRepeat: () -> Unit,
 ) {
-    var selectedTab by remember { mutableStateOf(0) } // 0 = Emojis, 1 = Kaomoji
+    var selectedTab by remember { mutableStateOf(0) } // 0 = Emojis, 1 = Kaomoji, 2 = Favorites
     val scope = rememberCoroutineScope()
     val latestOnBackspace by rememberUpdatedState(onBackspace)
     val latestOnBackspaceRepeat by rememberUpdatedState(onBackspaceRepeat)
@@ -477,27 +789,40 @@ private fun EmojiAndKaomojiPanel(
                     active = selectedTab == 1,
                     onClick = { selectedTab = 1 },
                 )
+                CategoryChip(
+                    label = "★ Favorites",
+                    active = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                )
             }
 
-            if (selectedTab == 0) {
-                AndroidView(
-                    factory = { context ->
-                        EmojiPickerView(context).apply {
-                            setOnEmojiPickedListener { item ->
-                                onCommit(item.emoji)
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(contentHeight),
-                )
-            } else {
-                KaomojiGridContent(
-                    contentHeight = contentHeight,
-                    items = kaomojiItems,
-                    onSelect = onCommit,
-                )
+            when (selectedTab) {
+                0 -> {
+                    NativeEmojiGridContent(
+                        contentHeight = contentHeight,
+                        gridColumns = emojiGridColumns,
+                        sections = emojiSections,
+                        onSelect = onCommitEmoji,
+                    )
+                }
+                1 -> {
+                    KaomojiGridContent(
+                        contentHeight = contentHeight,
+                        items = kaomojiItems,
+                        favoriteItems = favoriteItems,
+                        onToggleFavorite = onToggleFavorite,
+                        onSelect = onCommitKaomoji,
+                    )
+                }
+                else -> {
+                    FavoritesGridContent(
+                        contentHeight = contentHeight,
+                        favoriteItems = favoriteItems.toList(),
+                        recentEmojis = recentEmojis,
+                        onToggleFavorite = onToggleFavorite,
+                        onSelect = onCommitKaomoji,
+                    )
+                }
             }
         }
 
@@ -541,9 +866,145 @@ private fun EmojiAndKaomojiPanel(
 }
 
 @Composable
+private fun NativeEmojiGridContent(
+    contentHeight: Dp,
+    gridColumns: Int,
+    sections: List<EmojiSection>,
+    onSelect: (String) -> Unit,
+) {
+    val categories = remember(sections) { listOf("All") + sections.map { it.category } }
+    var selectedCategory by remember { mutableStateOf("All") }
+    val visibleSections = remember(sections, selectedCategory) {
+        if (selectedCategory == "All") sections else sections.filter { it.category == selectedCategory }
+    }
+    val emojiFontSize = when {
+        gridColumns <= 6 -> 28.sp
+        gridColumns == 7 -> 25.sp
+        gridColumns == 8 -> 22.sp
+        else -> 20.sp
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(contentHeight)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            categories.forEach { cat ->
+                CategoryChip(
+                    label = cat,
+                    active = cat == selectedCategory,
+                    onClick = { selectedCategory = cat },
+                )
+            }
+        }
+
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(gridColumns.coerceIn(5, 10)),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            visibleSections.forEach { section ->
+                item(
+                    key = "header_${section.category}",
+                    span = { GridItemSpan(maxLineSpan) },
+                ) {
+                    Text(
+                        text = section.category,
+                        color = ToolbarTextColor,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                    )
+                }
+                items(
+                    items = section.emojis,
+                    key = { emoji -> "${section.category}_$emoji" },
+                ) { emoji ->
+                    Box(
+                        modifier = Modifier
+                            .height(42.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onSelect(emoji) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = emoji,
+                            fontSize = emojiFontSize,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FavoritesGridContent(
+    contentHeight: Dp,
+    favoriteItems: List<String>,
+    recentEmojis: List<String>,
+    onToggleFavorite: (String) -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    val combined = remember(favoriteItems, recentEmojis) {
+        (favoriteItems + recentEmojis.filterNot { it in favoriteItems }).distinct()
+    }
+
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 86.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(contentHeight)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+    ) {
+        items(combined) { item ->
+            val isFav = item in favoriteItems
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(KeyBgColor)
+                    .clickable { onSelect(item) }
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = item,
+                    color = Color.White,
+                    fontSize = if (item.length <= 2) 20.sp else 13.sp,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    imageVector = if (isFav) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                    contentDescription = "Favorite",
+                    tint = if (isFav) ReturnBgColor else HintTextColor,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clickable { onToggleFavorite(item) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun KaomojiGridContent(
-    contentHeight: androidx.compose.ui.unit.Dp,
+    contentHeight: Dp,
     items: List<KaomojiItem>,
+    favoriteItems: Set<String>,
+    onToggleFavorite: (String) -> Unit,
     onSelect: (String) -> Unit,
 ) {
     val categories = remember(items) { listOf("all") + items.map { it.category }.distinct() }
@@ -575,25 +1036,36 @@ private fun KaomojiGridContent(
         }
 
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 108.dp),
+            columns = GridCells.Adaptive(minSize = 120.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
             items(filtered) { item ->
-                Box(
+                val isFav = item.text in favoriteItems
+                Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .background(KeyBgColor)
                         .clickable { onSelect(item.text) }
                         .padding(horizontal = 8.dp, vertical = 10.dp),
-                    contentAlignment = Alignment.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
                         text = item.text,
                         color = Color.White,
                         fontSize = 14.sp,
                         maxLines = 1,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        imageVector = if (isFav) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = "Favorite",
+                        tint = if (isFav) ReturnBgColor else HintTextColor,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clickable { onToggleFavorite(item.text) },
                     )
                 }
             }
@@ -608,19 +1080,31 @@ private fun TouchKeyGrid(
     isAlphaLayer: Boolean,
     rootWidthPx: Float,
     shiftState: ShiftState,
+    isForwardDeleteMode: Boolean,
+    longPressDelayMs: Long,
+    rapidDeleteDelayMs: Long,
+    deleteGesturesEnabled: Boolean,
     returnAction: ReturnAction,
     accentPopup: AccentPopupState?,
     assets: AssetRepository,
     onShowAccentPopup: (AccentPopupState?) -> Unit,
+    onToggleForwardDeleteMode: () -> Unit,
     onKeyFeedback: () -> Unit,
     onKeyAction: (String, String?) -> Unit,
     onBackspaceRepeat: () -> Unit,
+    onDeleteWord: () -> Unit,
+    onDeleteParagraph: () -> Unit,
     onMoveCursor: (Int) -> Unit,
+    onMoveCursorVertical: (Int) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val glideThresholdPx = with(density) { 12.dp.toPx() }
     val glideStepPx = with(density) { 14.dp.toPx() }
+    val glideVerticalStepPx = with(density) { 18.dp.toPx() }
+    val cancelPopupMovePx = with(density) { 14.dp.toPx() }
+    val deleteSwipeThresholdPx = with(density) { 18.dp.toPx() }
+    val wordSwipeStepPx = with(density) { 24.dp.toPx() }
 
     val keyBounds = remember(rows) { mutableMapOf<String, Rect>() }
     val pressedKeys = remember(rows) { mutableStateMapOf<String, Boolean>() }
@@ -632,11 +1116,18 @@ private fun TouchKeyGrid(
     val latestIsAlphaLayer by rememberUpdatedState(isAlphaLayer)
     val latestLayoutId by rememberUpdatedState(layoutId)
     val latestRootWidthPx by rememberUpdatedState(rootWidthPx)
+    val latestLongPressDelayMs by rememberUpdatedState(longPressDelayMs)
+    val latestRapidDeleteDelayMs by rememberUpdatedState(rapidDeleteDelayMs)
+    val latestDeleteGesturesEnabled by rememberUpdatedState(deleteGesturesEnabled)
     val latestOnShowAccentPopup by rememberUpdatedState(onShowAccentPopup)
+    val latestOnToggleForwardDelete by rememberUpdatedState(onToggleForwardDeleteMode)
     val latestOnKeyAction by rememberUpdatedState(onKeyAction)
     val latestOnKeyFeedback by rememberUpdatedState(onKeyFeedback)
     val latestOnBackspaceRepeat by rememberUpdatedState(onBackspaceRepeat)
+    val latestOnDeleteWord by rememberUpdatedState(onDeleteWord)
+    val latestOnDeleteParagraph by rememberUpdatedState(onDeleteParagraph)
     val latestOnMoveCursor by rememberUpdatedState(onMoveCursor)
+    val latestOnMoveCursorVertical by rememberUpdatedState(onMoveCursorVertical)
 
     Box(
         modifier = Modifier
@@ -654,8 +1145,6 @@ private fun TouchKeyGrid(
                             if (change.pressed && !change.previousPressed) {
                                 val hitKey = findHitKey(keyBounds, localPos) ?: continue
 
-                                // Instant 2-thumb rollover: if another finger is still down on a character key
-                                // (not SHIFT, not gliding, no popup open), commit that earlier key immediately!
                                 if (latestPopup == null && activePointers.isNotEmpty() && hitKey != "SHIFT") {
                                     val toCommit = activePointers.entries.filter { (_, prev) ->
                                         prev.keyId != "SHIFT" && prev.keyId != "BACKSPACE" && !prev.isGliding
@@ -676,15 +1165,18 @@ private fun TouchKeyGrid(
                                     keyId = hitKey,
                                     startPosition = localPos,
                                     lastGlideX = localPos.x,
+                                    lastGlideY = localPos.y,
                                 )
 
                                 when (hitKey) {
                                     "BACKSPACE" -> {
+                                        // Very-long-press rapid delete mode
                                         pointer.repeatJob = scope.launch {
-                                            delay(360L)
+                                            delay(latestRapidDeleteDelayMs)
+                                            pointer.deleteGestureTriggered = true
                                             while (true) {
                                                 latestOnBackspaceRepeat()
-                                                delay(45L)
+                                                delay(35L)
                                             }
                                         }
                                     }
@@ -694,7 +1186,7 @@ private fun TouchKeyGrid(
                                     else -> {
                                         val rect = keyBounds[hitKey]
                                         pointer.longPressJob = scope.launch {
-                                            delay(290L)
+                                            delay(latestLongPressDelayMs)
                                             val baseChar = if (latestShift != ShiftState.OFF) {
                                                 hitKey.uppercase()
                                             } else {
@@ -749,18 +1241,70 @@ private fun TouchKeyGrid(
                                 change.consume()
                             } else if (change.pressed && change.previousPressed) {
                                 val pointer = activePointers[id] ?: continue
+                                val totalDx = localPos.x - pointer.startPosition.x
+                                val totalDy = localPos.y - pointer.startPosition.y
+
                                 if (pointer.keyId == "SPACE") {
-                                    val totalDx = localPos.x - pointer.startPosition.x
-                                    if (!pointer.isGliding && kotlin.math.abs(totalDx) > glideThresholdPx) {
+                                    if (!pointer.isGliding && (abs(totalDx) > glideThresholdPx || abs(totalDy) > glideThresholdPx)) {
                                         pointer.isGliding = true
                                         pointer.lastGlideX = localPos.x
+                                        pointer.lastGlideY = localPos.y
                                     }
                                     if (pointer.isGliding) {
                                         val stepDx = localPos.x - pointer.lastGlideX
-                                        val steps = (stepDx / glideStepPx).toInt()
-                                        if (steps != 0) {
-                                            latestOnMoveCursor(steps)
-                                            pointer.lastGlideX += steps * glideStepPx
+                                        val stepsX = (stepDx / glideStepPx).toInt()
+                                        if (stepsX != 0) {
+                                            latestOnMoveCursor(stepsX)
+                                            pointer.lastGlideX += stepsX * glideStepPx
+                                        }
+                                        val stepDy = localPos.y - pointer.lastGlideY
+                                        val stepsY = (stepDy / glideVerticalStepPx).toInt()
+                                        if (stepsY != 0) {
+                                            latestOnMoveCursorVertical(stepsY)
+                                            pointer.lastGlideY += stepsY * glideVerticalStepPx
+                                        }
+                                    }
+                                } else if (pointer.keyId == "BACKSPACE" && latestDeleteGesturesEnabled) {
+                                    if (!pointer.deleteGestureTriggered) {
+                                        when {
+                                            // Glide down -> switch Backspace <-> Right-delete mode
+                                            totalDy > deleteSwipeThresholdPx && abs(totalDy) > abs(totalDx) -> {
+                                                pointer.deleteGestureTriggered = true
+                                                pointer.isGliding = true
+                                                pointer.repeatJob?.cancel()
+                                                latestOnKeyFeedback()
+                                                latestOnToggleForwardDelete()
+                                            }
+                                            // Glide up -> delete one paragraph at once
+                                            totalDy < -deleteSwipeThresholdPx && abs(totalDy) > abs(totalDx) -> {
+                                                pointer.deleteGestureTriggered = true
+                                                pointer.isGliding = true
+                                                pointer.repeatJob?.cancel()
+                                                latestOnKeyFeedback()
+                                                latestOnDeleteParagraph()
+                                            }
+                                            // Glide left -> word delete mode
+                                            totalDx < -deleteSwipeThresholdPx && abs(totalDx) >= abs(totalDy) -> {
+                                                pointer.deleteGestureTriggered = true
+                                                pointer.isGliding = true
+                                                pointer.lastGlideX = localPos.x
+                                                pointer.repeatJob?.cancel()
+                                                latestOnKeyFeedback()
+                                                latestOnDeleteWord()
+                                                pointer.repeatJob = scope.launch {
+                                                    delay(280L)
+                                                    while (true) {
+                                                        latestOnDeleteWord()
+                                                        delay(140L)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else if (pointer.isGliding && totalDx < -deleteSwipeThresholdPx) {
+                                        val stepDx = pointer.lastGlideX - localPos.x
+                                        if (stepDx >= wordSwipeStepPx) {
+                                            latestOnDeleteWord()
+                                            pointer.lastGlideX = localPos.x
                                         }
                                     }
                                 } else {
@@ -773,12 +1317,17 @@ private fun TouchKeyGrid(
                                         val col = ((localPos.x - (popup.anchorX + padPx)) / cellStepPx)
                                             .toInt()
                                             .coerceIn(0, cols - 1)
-                                        val dy = localPos.y - pointer.startPosition.y
                                         val rowCount = (popup.variants.size + cols - 1) / cols
-                                        val rowOffset = if (rowCount > 1 && dy < -cellStepPx * 0.65f) 1 else 0
+                                        val rowOffset = if (rowCount > 1 && totalDy < -cellStepPx * 0.65f) 1 else 0
                                         val nextIndex = (rowOffset * cols + col).coerceIn(0, popup.variants.lastIndex)
                                         if (nextIndex != popup.selectedIndex) {
                                             latestOnShowAccentPopup(popup.copy(selectedIndex = nextIndex))
+                                        }
+                                    } else if (abs(totalDx) > cancelPopupMovePx || abs(totalDy) > cancelPopupMovePx) {
+                                        // Cancel pending long-press popup if finger glides before delay
+                                        pointer.longPressJob?.cancel()
+                                        if (totalDx < -deleteSwipeThresholdPx) {
+                                            pointer.isGliding = true
                                         }
                                     }
                                 }
@@ -794,7 +1343,7 @@ private fun TouchKeyGrid(
                                     val chosen = popup.variants[popup.selectedIndex]
                                     latestOnShowAccentPopup(null)
                                     latestOnKeyAction(pointer.keyId, chosen)
-                                } else if (!pointer.isGliding) {
+                                } else if (!pointer.isGliding && !pointer.deleteGestureTriggered) {
                                     latestOnKeyAction(pointer.keyId, null)
                                 }
                                 change.consume()
@@ -833,16 +1382,21 @@ private fun TouchKeyGrid(
                         val isPressed = pressedKeys[keyId] == true
                         val isReturn = keyId == "RETURN"
                         val isShiftActive = keyId == "SHIFT" && shiftState != ShiftState.OFF
+                        val isForwardDeleteKey = keyId == "BACKSPACE" && isForwardDeleteMode
 
                         val bg = when {
                             isReturn -> ReturnBgColor
-                            isShiftActive -> KeyPressedColor
+                            isShiftActive || isForwardDeleteKey -> KeyPressedColor
                             isPressed -> KeyPressedColor
                             isPill || isLessRoundedControl -> PillKeyBgColor
                             isAction -> ActionKeyBgColor
                             else -> KeyBgColor
                         }
-                        val fg = if (isReturn) ReturnFgColor else Color.White
+                        val fg = when {
+                            isReturn -> ReturnFgColor
+                            isForwardDeleteKey -> ReturnBgColor
+                            else -> Color.White
+                        }
                         val shape: Shape = when {
                             isPill -> RoundedCornerShape(50)
                             isLessRoundedControl -> RoundedCornerShape(10.dp)
@@ -854,6 +1408,7 @@ private fun TouchKeyGrid(
                             keyId = keyId,
                             label = KeyboardStateLogic.resolveKeyLabel(keyId, shiftState, returnAction),
                             shiftState = shiftState,
+                            isForwardDeleteKey = isForwardDeleteKey,
                             icon = keyIconFor(keyId, returnAction),
                             hint = hint,
                             weight = weight,
@@ -885,6 +1440,7 @@ private fun RowScope.KeyCap(
     keyId: String,
     label: String,
     shiftState: ShiftState,
+    isForwardDeleteKey: Boolean,
     icon: ImageVector?,
     hint: String?,
     weight: Float,
@@ -929,7 +1485,8 @@ private fun RowScope.KeyCap(
                     tint = foregroundColor,
                     modifier = Modifier
                         .size(22.dp)
-                        .align(Alignment.Center),
+                        .align(Alignment.Center)
+                        .graphicsLayer(scaleX = if (isForwardDeleteKey) -1f else 1f),
                 )
             }
             else -> {
@@ -1017,7 +1574,6 @@ private fun findHitKey(bounds: Map<String, Rect>, pos: Offset): String? {
     for ((key, rect) in bounds) {
         if (rect.contains(pos)) return key
     }
-    // Zero dead-zone fallback: snap to the nearest key when a fast tap lands in the inter-key gap
     var bestKey: String? = null
     var bestDistSq = Float.MAX_VALUE
     for ((key, rect) in bounds) {

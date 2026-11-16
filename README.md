@@ -67,8 +67,9 @@ cargo ndk -t arm64-v8a -o app/src/main/jniLibs build --release --manifest-path r
 ./gradlew assembleDebug
 ```
 
-## Roadmap & Changelog
+## Documentation, Roadmap & Changelog
 
+- See [`docs/USAGE.md`](docs/USAGE.md) for the complete user guide (layers, Shift, long-press popups, 2D spacebar cursor glide, power delete gestures, emojis/favorites, clipboard history, and terminal mode).
 - See [`ROADMAP.md`](ROADMAP.md) for the full milestone breakdown from `v0.1` (POC) through `v1.0` (public release) and beyond.
 - See [`CHANGELOG.md`](CHANGELOG.md) for versioned release notes and `[Unreleased]` changes.
 - See [`CONTRIBUTING.md`](CONTRIBUTING.md) for commit, branching, and maintenance conventions.

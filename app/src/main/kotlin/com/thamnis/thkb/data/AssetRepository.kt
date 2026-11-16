@@ -10,11 +10,17 @@ data class KaomojiItem(
     val tags: List<String>,
 )
 
+data class EmojiSection(
+    val category: String,
+    val emojis: List<String>,
+)
+
 class AssetRepository(private val context: Context) {
 
     private val layoutCache = mutableMapOf<String, List<List<String>>>()
     private var accentsCache: Map<String, List<String>>? = null
     private var kaomojiCache: List<KaomojiItem>? = null
+    private var emojiSectionsCache: List<EmojiSection>? = null
 
     fun loadLayout(layoutId: String): List<List<String>> {
         layoutCache[layoutId]?.let { return it }
@@ -76,6 +82,29 @@ class AssetRepository(private val context: Context) {
         }
         kaomojiCache = items
         return items
+    }
+
+    fun loadEmojiSections(): List<EmojiSection> {
+        emojiSectionsCache?.let { return it }
+        val jsonText = context.assets.open("kaomoji/emojis.json").bufferedReader().use { it.readText() }
+        val array = JSONArray(jsonText)
+        val sections = buildList {
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val emojisJson = obj.getJSONArray("emojis")
+                val emojis = buildList {
+                    for (e in 0 until emojisJson.length()) add(emojisJson.getString(e))
+                }
+                add(
+                    EmojiSection(
+                        category = obj.getString("category"),
+                        emojis = emojis,
+                    ),
+                )
+            }
+        }
+        emojiSectionsCache = sections
+        return sections
     }
 
     private fun loadAccents(): Map<String, List<String>> {

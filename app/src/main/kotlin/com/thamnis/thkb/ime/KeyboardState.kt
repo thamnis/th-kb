@@ -1,5 +1,6 @@
 package com.thamnis.thkb.ime
 
+import android.text.InputType
 import android.view.inputmethod.EditorInfo
 
 enum class ShiftState {
@@ -18,6 +19,16 @@ enum class PanelMode {
     KEYBOARD,
     EMOJI,
     KAOMOJI,
+    CLIPBOARD,
+}
+
+enum class InputContext {
+    NORMAL,
+    URL,
+    EMAIL,
+    NUMBER,
+    PASSWORD,
+    TERMINAL,
 }
 
 enum class ReturnAction(val label: String) {
@@ -109,5 +120,103 @@ object KeyboardStateLogic {
             EditorInfo.IME_ACTION_DONE -> ReturnAction.DONE
             else -> ReturnAction.DEFAULT
         }
+    }
+
+    private val terminalPackages = setOf(
+        "com.termux",
+        "com.sonelli.juicessh",
+        "jackpal.androidterm",
+        "org.connectbot",
+    )
+
+    fun resolveInputContext(inputType: Int, packageName: String?): InputContext {
+        if (packageName != null && packageName in terminalPackages) {
+            return InputContext.TERMINAL
+        }
+        val klass = inputType and InputType.TYPE_MASK_CLASS
+        val variation = inputType and InputType.TYPE_MASK_VARIATION
+
+        if (klass == InputType.TYPE_CLASS_NUMBER ||
+            klass == InputType.TYPE_CLASS_PHONE ||
+            klass == InputType.TYPE_CLASS_DATETIME
+        ) {
+            return if (variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD) {
+                InputContext.PASSWORD
+            } else {
+                InputContext.NUMBER
+            }
+        }
+
+        if (klass == InputType.TYPE_CLASS_TEXT) {
+            return when (variation) {
+                InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+                InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+                -> InputContext.PASSWORD
+                InputType.TYPE_TEXT_VARIATION_URI -> InputContext.URL
+                InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+                InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS,
+                -> InputContext.EMAIL
+                else -> InputContext.NORMAL
+            }
+        }
+        return InputContext.NORMAL
+    }
+
+    fun shouldAutoCapOnOpen(context: InputContext, autoCapPref: Boolean): Boolean =
+        autoCapPref && context == InputContext.NORMAL
+
+    fun shouldAutoCapBeforeCursor(
+        textBeforeCursor: String,
+        context: InputContext,
+        autoCapPref: Boolean,
+    ): Boolean {
+        if (!autoCapPref || context != InputContext.NORMAL) return false
+        if (textBeforeCursor.isEmpty() || textBeforeCursor.endsWith("\n")) return true
+        val trimmed = textBeforeCursor.trimEnd(' ', '\t')
+        if (trimmed.length == textBeforeCursor.length) return false
+        val lastChar = trimmed.lastOrNull() ?: return true
+        return lastChar == '.' || lastChar == '!' || lastChar == '?'
+    }
+
+    fun initialLayerForContext(context: InputContext): KeyboardLayer =
+        if (context == InputContext.NUMBER) KeyboardLayer.SYMBOLS else KeyboardLayer.ALPHA
+
+    fun wordDeleteCountBefore(before: String): Int {
+        if (before.isEmpty()) return 0
+        var idx = before.length
+        while (idx > 0 && before[idx - 1].isWhitespace()) idx--
+        if (idx > 0 && !before[idx - 1].isLetterOrDigit()) {
+            while (idx > 0 && !before[idx - 1].isLetterOrDigit() && !before[idx - 1].isWhitespace()) idx--
+        } else {
+            while (idx > 0 && before[idx - 1].isLetterOrDigit()) idx--
+        }
+        return (before.length - idx).coerceAtLeast(1)
+    }
+
+    fun wordDeleteCountAfter(after: String): Int {
+        if (after.isEmpty()) return 0
+        var idx = 0
+        while (idx < after.length && after[idx].isWhitespace()) idx++
+        if (idx < after.length && !after[idx].isLetterOrDigit()) {
+            while (idx < after.length && !after[idx].isLetterOrDigit() && !after[idx].isWhitespace()) idx++
+        } else {
+            while (idx < after.length && after[idx].isLetterOrDigit()) idx++
+        }
+        return idx.coerceAtLeast(1)
+    }
+
+    fun paragraphDeleteCountBefore(before: String): Int {
+        if (before.isEmpty()) return 0
+        val trimmedEnd = if (before.endsWith("\n")) before.length - 1 else before.length
+        val prevNewline = before.lastIndexOf('\n', startIndex = (trimmedEnd - 1).coerceAtLeast(0))
+        return if (prevNewline < 0) before.length else (before.length - prevNewline - 1)
+    }
+
+    fun paragraphDeleteCountAfter(after: String): Int {
+        if (after.isEmpty()) return 0
+        val start = if (after.startsWith("\n")) 1 else 0
+        val nextNewline = after.indexOf('\n', startIndex = start)
+        return if (nextNewline < 0) after.length else (nextNewline + 1)
     }
 }

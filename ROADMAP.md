@@ -17,11 +17,11 @@
 
 ## `v0.2` — Pre-Release Stabilization & Context
 
-- [ ] `InputConnection` edge-case fixes across Chrome, WhatsApp/Messages, Termux, and password/OTP fields
-- [ ] **Delete to the right** (forward delete via `deleteSurroundingText(0, 1)`)
-- [ ] **Context-aware typing** (`EditorInfo.inputType` + `packageName` auto-switching for coding/terminals, messaging, numeric-only, URL, password)
-- [ ] Multi-item clipboard history
-- [ ] **Emoji & Kaomoji favorites** (pinned/starred emojis and kaomojis tab)
+- [x] `InputConnection` edge-case fixes across Chrome, WhatsApp/Messages, Termux, and password/OTP fields
+- [x] **Delete to the right** (glide-down on `Backspace` to toggle right-delete mode + word/paragraph/rapid delete gestures)
+- [x] **Context-aware typing** (`EditorInfo.inputType` + `packageName` auto-switching for coding/terminals, messaging, numeric/symbols, URL, email, password)
+- [x] Multi-item clipboard history (pin, delete, clear unpinned, system paste)
+- [x] **Emoji & Kaomoji favorites** (pinned/starred emojis and kaomojis tab + high-DPI native Compose emoji grid with configurable column size)
 
 ## `v1.0` — Public Release
 
@@ -30,6 +30,7 @@
 
 ## `v1.1` — Ergonomics & Themes
 
+- [ ] **Numeric-only keyboard mode** (dedicated large 3×4 numpad for `TYPE_CLASS_NUMBER` / `TYPE_CLASS_PHONE` fields)
 - [ ] **KB separation** (split mode)
 - [ ] **One-hand mode** (left/right docked)
 - [ ] **Floating KB** (`onComputeInsets` + `touchableInsets`)
@@ -39,6 +40,7 @@
 
 - [ ] Shortcuts to first/last characters (Home/End)
 - [ ] Move cursor/selection by letter, word, phrase, and paragraph
+- [ ] **Rich media copy-pasting** (clipboard image/GIF items committed via `InputConnectionCompat.commitContent()`)
 - [ ] **GIFs & Stickers** (`InputConnectionCompat.commitContent()`)
 
 ## `v1.3` — Cross-Device File & Remote Control

@@ -1,7 +1,10 @@
 package com.thamnis.thkb.ime
 
+import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class KeyboardStateLogicTest {
@@ -35,5 +38,67 @@ class KeyboardStateLogicTest {
             ReturnAction.DEFAULT,
             KeyboardStateLogic.resolveReturnAction(EditorInfo.IME_ACTION_SEARCH or EditorInfo.IME_FLAG_NO_ENTER_ACTION),
         )
+    }
+
+    @Test
+    fun resolveInputContextDetectsTerminalUrlEmailNumberAndPassword() {
+        assertEquals(
+            InputContext.TERMINAL,
+            KeyboardStateLogic.resolveInputContext(InputType.TYPE_CLASS_TEXT, "com.termux"),
+        )
+        assertEquals(
+            InputContext.URL,
+            KeyboardStateLogic.resolveInputContext(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI,
+                "com.android.chrome",
+            ),
+        )
+        assertEquals(
+            InputContext.EMAIL,
+            KeyboardStateLogic.resolveInputContext(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+                "com.google.android.gm",
+            ),
+        )
+        assertEquals(
+            InputContext.PASSWORD,
+            KeyboardStateLogic.resolveInputContext(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                "com.example.app",
+            ),
+        )
+        assertEquals(
+            InputContext.NUMBER,
+            KeyboardStateLogic.resolveInputContext(InputType.TYPE_CLASS_NUMBER, "com.example.app"),
+        )
+        assertTrue(KeyboardStateLogic.shouldAutoCapOnOpen(InputContext.NORMAL, true))
+        assertFalse(KeyboardStateLogic.shouldAutoCapOnOpen(InputContext.PASSWORD, true))
+        assertFalse(KeyboardStateLogic.shouldAutoCapOnOpen(InputContext.URL, true))
+        assertEquals(KeyboardLayer.SYMBOLS, KeyboardStateLogic.initialLayerForContext(InputContext.NUMBER))
+        assertEquals(KeyboardLayer.ALPHA, KeyboardStateLogic.initialLayerForContext(InputContext.NORMAL))
+    }
+
+    @Test
+    fun wordAndParagraphDeleteCountsComputeExpectedRanges() {
+        assertEquals(5, KeyboardStateLogic.wordDeleteCountBefore("hello world"))
+        assertEquals(6, KeyboardStateLogic.wordDeleteCountBefore("hello world "))
+        assertEquals(5, KeyboardStateLogic.wordDeleteCountAfter("world next"))
+        assertEquals(6, KeyboardStateLogic.wordDeleteCountAfter(" world next"))
+
+        assertEquals(11, KeyboardStateLogic.paragraphDeleteCountBefore("first line\nsecond line"))
+        assertEquals(11, KeyboardStateLogic.paragraphDeleteCountBefore("single line"))
+        assertEquals(11, KeyboardStateLogic.paragraphDeleteCountAfter("first line\nsecond line"))
+    }
+
+    @Test
+    fun shouldAutoCapAfterSentencePunctuationAndNewline() {
+        assertTrue(KeyboardStateLogic.shouldAutoCapBeforeCursor("", InputContext.NORMAL, true))
+        assertTrue(KeyboardStateLogic.shouldAutoCapBeforeCursor("Hello.\n", InputContext.NORMAL, true))
+        assertTrue(KeyboardStateLogic.shouldAutoCapBeforeCursor("Hello. ", InputContext.NORMAL, true))
+        assertTrue(KeyboardStateLogic.shouldAutoCapBeforeCursor("What?! ", InputContext.NORMAL, true))
+        assertFalse(KeyboardStateLogic.shouldAutoCapBeforeCursor("Hello ", InputContext.NORMAL, true))
+        assertFalse(KeyboardStateLogic.shouldAutoCapBeforeCursor("Hello.", InputContext.NORMAL, true))
+        assertFalse(KeyboardStateLogic.shouldAutoCapBeforeCursor("Hello. ", InputContext.URL, true))
+        assertFalse(KeyboardStateLogic.shouldAutoCapBeforeCursor("Hello. ", InputContext.NORMAL, false))
     }
 }
