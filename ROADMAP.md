@@ -4,16 +4,16 @@
 
 ## `v0.1` — Gboard-Parity POC (Internal)
 
-- [ ] `InputMethodService` + `ComposeView` lifecycle bridge (`LifecycleOwner`, `SavedStateRegistryOwner`)
-- [ ] Raw `pointerInput` (`awaitEachGesture`) touch grid for 0ms key-down & multi-touch chords
-- [ ] Pixel 7a `WindowInsets` & `res/xml/method.xml` subtypes (native bottom-left dismiss & bottom-right IME switcher)
-- [ ] Exact Gboard 4-row + top toolbar layout (`44dp` toolbar + `4 × 54dp` key rows)
-- [ ] Core keys: 3-state Shift, Delete (left tap/hold), Dynamic Return (`EditorInfo.imeOptions`), `?123` / `=\<` symbol layers
-- [ ] Multi-character long-press popups (accents & variants)
-- [ ] Spacebar glide-to-move-cursor (`setSelection` with `DPAD_LEFT/RIGHT` fallback)
-- [ ] Top toolbar: Paste (`performContextMenuAction`), Emoji/ASCII toggle, Settings shortcut
-- [ ] Emoji picker (`androidx.emoji2`) + static ASCII emoticons (`kaomoji`) panel
-- [ ] Minimal Settings screen (layout selection, haptic feedback, key-press sound)
+- [x] `InputMethodService` + `ComposeView` lifecycle bridge (`LifecycleOwner`, `SavedStateRegistryOwner`)
+- [x] Raw `pointerInput` (`awaitEachGesture`) touch grid for 0ms key-down & multi-touch chords
+- [ ] Pixel 7a `WindowInsets` & `res/xml/method.xml` subtypes (native bottom-left dismiss & bottom-right IME switcher) — *subtypes configured; awaiting on-device Pixel 7a verification*
+- [x] Exact Gboard 4-row + top toolbar layout (`44dp` toolbar + `4 × 54dp` key rows)
+- [x] Core keys: 3-state Shift, Delete (left tap/hold), Dynamic Return (`EditorInfo.imeOptions`), `?123` / `=\<` symbol layers
+- [x] Multi-character long-press popups (accents & variants)
+- [x] Spacebar glide-to-move-cursor (`setSelection` with `DPAD_LEFT/RIGHT` fallback)
+- [x] Top toolbar: Paste (`performContextMenuAction`), Emoji/ASCII toggle, Settings shortcut
+- [x] Emoji picker (`androidx.emoji2`) + static ASCII emoticons (`kaomoji`) panel
+- [x] Minimal Settings screen (layout selection, haptic feedback, key-press sound)
 
 ## `v0.2` — Pre-Release Stabilization & Context
 

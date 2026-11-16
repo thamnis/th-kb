@@ -1,8 +1,18 @@
 [
   { "text": "(^_^)", "category": "happy", "tags": ["smile", "joy", "happy"] },
   { "text": "(≧▽≦)", "category": "happy", "tags": ["excited", "joy"] },
+  { "text": "(✿◠‿◠)", "category": "happy", "tags": ["cute", "smile", "flower"] },
+  { "text": "(*^▽^*)", "category": "happy", "tags": ["cheerful", "happy"] },
+  { "text": "(づ｡◕‿‿◕｡)づ", "category": "love", "tags": ["hug", "cute", "love"] },
+  { "text": "(♥ω♥*)", "category": "love", "tags": ["heart", "love"] },
+  { "text": "(´∀｀)♡", "category": "love", "tags": ["heart", "affection"] },
   { "text": "¯\\_(ツ)_/¯", "category": "shrug", "tags": ["shrug", "dunno", "meh"] },
-  { "text": "(╯°□°)╯︵ ┻━┻", "category": "angry", "tags": ["tableflip", "rage", "angry"] },
+  { "text": "(¬_¬)", "category": "shrug", "tags": ["sideeye", "skeptical"] },
+  { "text": "(・_・;)", "category": "shrug", "tags": ["awkward", "sweat"] },
   { "text": "(ಥ﹏ಥ)", "category": "sad", "tags": ["cry", "sad", "tears"] },
-  { "text": "(づ｡◕‿‿◕｡)づ", "category": "love", "tags": ["hug", "cute", "love"] }
+  { "text": "(T_T)", "category": "sad", "tags": ["cry", "sad"] },
+  { "text": "(；′⌒`)", "category": "sad", "tags": ["upset", "sad"] },
+  { "text": "(╯°□°)╯︵ ┻━┻", "category": "angry", "tags": ["tableflip", "rage", "angry"] },
+  { "text": "┬─┬ ノ( ゜-゜ノ)", "category": "angry", "tags": ["unflip", "calm"] },
+  { "text": "(ಠ_ಠ)", "category": "angry", "tags": ["disapprove", "stare"] }
 ]
