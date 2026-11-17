@@ -824,7 +824,11 @@ private fun ToolbarRow(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
-                    suggestions.take(3).forEachIndexed { idx, candidate ->
+                    val ordered = when {
+                        suggestions.size >= 3 -> listOf(suggestions[1], suggestions[0], suggestions[2])
+                        else -> suggestions
+                    }
+                    ordered.forEachIndexed { idx, candidate ->
                         if (idx > 0) {
                             Box(
                                 modifier = Modifier
@@ -833,12 +837,15 @@ private fun ToolbarRow(
                                     .background(HintTextColor.copy(alpha = 0.25f)),
                             )
                         }
-                        val isCenter = (suggestions.size == 3 && idx == 1) || (suggestions.size < 3 && idx == 0)
+                        val isCenter = (ordered.size == 3 && idx == 1) || (ordered.size < 3 && idx == 0)
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(8.dp))
+                                .then(
+                                    if (isCenter) Modifier.background(ActionKeyBgColor.copy(alpha = 0.55f)) else Modifier,
+                                )
                                 .clickable { onSelectSuggestion(candidate.word) }
                                 .padding(horizontal = 3.dp),
                             contentAlignment = Alignment.Center,

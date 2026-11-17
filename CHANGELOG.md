@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0-alpha.2] - 2026-11-17
+
+### Added
+- **Auto-Text Replacement & Cancel-on-Delete**: Pressing Space or punctuation (`.,!?`) automatically restores missing accents (*mogo* → *môgô*, *ecole* → *école*) and fixes adjacent-key typos in `advanced_autocomplete` mode without hijacking valid dictionary words; tapping **Delete (`⌫`)** immediately after an auto-replacement or suggestion tap cancels the replacement and restores your exact typed prefix (suppressing duplicate re-correction on the next Space).
+- **Native Rust SymSpell + 2D Spatial Engine**: Compiled `libth_kb_core.so` (`arm64-v8a`, `armeabi-v7a`, `x86_64`) via Android NDK + JNI with sorted 1/2-char prefix buckets, log10 Zipf frequency scaling, SymSpell distance-1 delete index, and QWERTY/AZERTY adjacent-key proximity weighting (with graceful Kotlin fallback for JVM unit tests and non-NDK builds).
+- **Real 30,000-Word EN & FR Conversational Dictionaries**: Bundled cleaned 30k English (`en_words.txt`) and French (`fr_words.txt`) wordlists alongside expanded Nouchi (`fr_ci_nouchi.json`) with balanced frequencies and canonical city names.
+- **Native Cross-Compile Script**: Added `scripts/build_rust_android.sh` to build and strip Rust `.so` binaries for Android ABIs.
+
+### Changed
+- **Clean Start & Dynamic Case Alignment**: Empty text fields no longer display filler stopwords (`je – *est* – tu`)—keeping tools visible until typing starts and omitting random unigrams after spaces when no contextual bigram/trigram matches. All lookups normalize to lowercase/accent-stripped internally and format results cleanly to match user casing (`LOWER`, `TITLE`, `ALL_CAPS`).
+- **Centered Top Prediction Slot**: Suggestion strip now places the highest-confidence `#1` prediction in the highlighted center slot (`[2nd, 1st, 3rd]`).
+
 ## [0.5.0-alpha.1] - 2026-11-17
 
 ### Added

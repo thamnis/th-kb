@@ -60,8 +60,15 @@ class ThKbInputMethodService :
     private lateinit var assets: AssetRepository
     private lateinit var clipboardHistory: ClipboardHistoryManager
     private lateinit var todoManager: TodoListManager
+    private data class PendingReplacement(
+        val originalPrefix: String,
+        val replacedText: String,
+    )
+
     private lateinit var suggestionEngine: SuggestionEngine
     private var suggestions by mutableStateOf<List<SuggestionCandidate>>(emptyList())
+    private var pendingReplacement: PendingReplacement? = null
+    private var suppressedAutoReplacePrefix: String? = null
     private var audioManager: AudioManager? = null
     private var inputComposeView: ComposeView? = null
 
@@ -81,6 +88,7 @@ class ThKbInputMethodService :
         clipboardHistory = ClipboardHistoryManager(this)
         todoManager = TodoListManager(this)
         suggestionEngine = SuggestionEngine(this)
+        Thread { suggestionEngine.warmUpAsync() }.start()
         audioManager = getSystemService(AUDIO_SERVICE) as? AudioManager
     }
 
@@ -168,10 +176,22 @@ class ThKbInputMethodService :
                         val ic = currentInputConnection ?: return@KeyboardRoot
                         val before = ic.getTextBeforeCursor(96, 0)
                         val (_, prefix) = suggestionEngine.extractContext(before)
-                        if (prefix.isNotEmpty()) {
-                            ic.deleteSurroundingText(prefix.length, 0)
+                        val replacementWithSpace = "$candidateWord "
+                        ic.beginBatchEdit()
+                        try {
+                            ic.finishComposingText()
+                            if (prefix.isNotEmpty()) {
+                                ic.deleteSurroundingText(prefix.length, 0)
+                            }
+                            ic.commitText(replacementWithSpace, 1)
+                        } finally {
+                            ic.endBatchEdit()
                         }
-                        ic.commitText("$candidateWord ", 1)
+                        pendingReplacement = PendingReplacement(
+                            originalPrefix = prefix,
+                            replacedText = replacementWithSpace,
+                        )
+                        suppressedAutoReplacePrefix = null
                         playFeedback(
                             haptics = settings.hapticsEnabled,
                             sound = settings.soundEnabled,
@@ -179,7 +199,18 @@ class ThKbInputMethodService :
                         refreshSuggestions(effectiveLayoutId, settings)
                     },
                     onCommitText = { text ->
-                        commitTextSafe(text)
+                        if (text in AUTO_REPLACE_TRIGGERS) {
+                            val autoReplaced = tryAutoReplaceBeforeTrigger(text, effectiveLayoutId, settings)
+                            if (!autoReplaced) {
+                                pendingReplacement = null
+                                suppressedAutoReplacePrefix = null
+                                commitTextSafe(text)
+                            }
+                        } else {
+                            pendingReplacement = null
+                            suppressedAutoReplacePrefix = null
+                            commitTextSafe(text)
+                        }
                         refreshSuggestions(effectiveLayoutId, settings)
                     },
                     onBackspace = {
@@ -187,33 +218,42 @@ class ThKbInputMethodService :
                         refreshSuggestions(effectiveLayoutId, settings)
                     },
                     onForwardDelete = {
+                        pendingReplacement = null
                         performForwardDelete()
                         refreshSuggestions(effectiveLayoutId, settings)
                     },
                     onDeleteWord = { forward ->
+                        pendingReplacement = null
                         performDeleteWord(forward)
                         refreshSuggestions(effectiveLayoutId, settings)
                     },
                     onDeleteParagraph = { forward ->
+                        pendingReplacement = null
                         performDeleteParagraph(forward)
                         refreshSuggestions(effectiveLayoutId, settings)
                     },
                     onSendKeyEvent = { keyCode ->
+                        pendingReplacement = null
                         sendDownUpKeyEvents(keyCode)
                     },
                     onSendCtrlKey = { char ->
+                        pendingReplacement = null
                         sendCtrlKeyCombination(char)
                     },
                     onReturn = {
+                        pendingReplacement = null
                         performReturnAction()
                     },
                     onPaste = {
+                        pendingReplacement = null
                         currentInputConnection?.performContextMenuAction(android.R.id.paste)
                     },
                     onUndo = {
+                        pendingReplacement = null
                         performUndoAction()
                     },
                     onRedo = {
+                        pendingReplacement = null
                         performRedoAction()
                     },
                     onMoveCursor = { deltaSteps ->
@@ -246,6 +286,8 @@ class ThKbInputMethodService :
         val imeOptions = info?.imeOptions ?: 0
         returnAction = KeyboardStateLogic.resolveReturnAction(imeOptions)
         activeEditorAction = imeOptions and EditorInfo.IME_MASK_ACTION
+        pendingReplacement = null
+        suppressedAutoReplacePrefix = null
         clipboardHistory.syncFromSystemClipboard()
         val settings = preferences.settings.value
         val effectiveLayoutId = subtypeLayoutOverride ?: settings.layoutId
@@ -262,9 +304,60 @@ class ThKbInputMethodService :
         candidatesEnd: Int,
     ) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        val pending = pendingReplacement
+        if (pending != null) {
+            val tail = currentInputConnection?.getTextBeforeCursor(pending.replacedText.length, 0)?.toString()
+            if (tail != pending.replacedText) {
+                pendingReplacement = null
+            }
+        }
         val settings = preferences.settings.value
         val effectiveLayoutId = subtypeLayoutOverride ?: settings.layoutId
         refreshSuggestions(effectiveLayoutId, settings)
+    }
+
+    private fun tryAutoReplaceBeforeTrigger(
+        triggerText: String,
+        effectiveLayoutId: String,
+        settings: KbSettings,
+    ): Boolean {
+        if (isRawInput || !settings.suggestionsEnabled || settings.autocompleteMode == KbSettings.AUTOCOMPLETE_MODE_OFF) {
+            return false
+        }
+        if (inputContext == InputContext.PASSWORD || inputContext == InputContext.TERMINAL || inputContext == InputContext.NUMBER) {
+            return false
+        }
+        val ic = currentInputConnection ?: return false
+        val before = ic.getTextBeforeCursor(96, 0) ?: return false
+        val (ctxWords, prefix) = suggestionEngine.extractContext(before)
+        if (prefix.length < 2 || prefix == suppressedAutoReplacePrefix) {
+            return false
+        }
+        val capHint = shouldAutoCapAtCurrentCursor(settings.autoCapOnOpen)
+        val replacement = suggestionEngine.findAutoReplacement(
+            layoutId = effectiveLayoutId,
+            contextWords = ctxWords,
+            prefix = prefix,
+            mode = settings.autocompleteMode,
+            ivorianEnabled = settings.ivorianFrenchEnabled,
+            capitalizeHint = capHint,
+        ) ?: return false
+
+        val fullReplacedText = replacement.word + triggerText
+        ic.beginBatchEdit()
+        try {
+            ic.finishComposingText()
+            ic.deleteSurroundingText(prefix.length, 0)
+            ic.commitText(fullReplacedText, 1)
+        } finally {
+            ic.endBatchEdit()
+        }
+        pendingReplacement = PendingReplacement(
+            originalPrefix = prefix,
+            replacedText = fullReplacedText,
+        )
+        suppressedAutoReplacePrefix = null
+        return true
     }
 
     private fun refreshSuggestions(effectiveLayoutId: String, settings: KbSettings) {
@@ -282,12 +375,14 @@ class ThKbInputMethodService :
         }
         val before = ic.getTextBeforeCursor(96, 0)
         val (ctxWords, prefix) = suggestionEngine.extractContext(before)
-        val dict = suggestionEngine.getActiveDictionary(effectiveLayoutId, settings.ivorianFrenchEnabled)
-        suggestions = suggestionEngine.querySuggestions(
-            dict = dict,
+        val capHint = shouldAutoCapAtCurrentCursor(settings.autoCapOnOpen)
+        suggestions = suggestionEngine.suggestForInput(
+            layoutId = effectiveLayoutId,
             contextWords = ctxWords,
             prefix = prefix,
             mode = settings.autocompleteMode,
+            ivorianEnabled = settings.ivorianFrenchEnabled,
+            capitalizeHint = capHint,
             maxResults = 3,
         )
     }
@@ -303,6 +398,7 @@ class ThKbInputMethodService :
 
     companion object {
         const val TOP_POPUP_HEADROOM_DP = 68
+        private val AUTO_REPLACE_TRIGGERS = setOf(" ", ".", ",", "!", "?")
     }
 
     override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype?) {
@@ -343,9 +439,34 @@ class ThKbInputMethodService :
     private fun performBackspace() {
         val ic = currentInputConnection ?: return
         if (isRawInput) {
+            pendingReplacement = null
             sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
             return
         }
+        val pending = pendingReplacement
+        if (pending != null) {
+            val selected = ic.getSelectedText(0)
+            if (selected.isNullOrEmpty()) {
+                val tail = ic.getTextBeforeCursor(pending.replacedText.length, 0)?.toString()
+                if (tail == pending.replacedText) {
+                    ic.beginBatchEdit()
+                    try {
+                        ic.finishComposingText()
+                        ic.deleteSurroundingText(pending.replacedText.length, 0)
+                        if (pending.originalPrefix.isNotEmpty()) {
+                            ic.commitText(pending.originalPrefix, 1)
+                        }
+                    } finally {
+                        ic.endBatchEdit()
+                    }
+                    pendingReplacement = null
+                    suppressedAutoReplacePrefix = pending.originalPrefix.ifEmpty { null }
+                    return
+                }
+            }
+            pendingReplacement = null
+        }
+        suppressedAutoReplacePrefix = null
         ic.beginBatchEdit()
         try {
             ic.finishComposingText()

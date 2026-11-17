@@ -1,5 +1,6 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Mutex, OnceLock};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct SuggestionCandidate {
@@ -18,178 +19,519 @@ pub struct DictionaryModel {
     pub trigrams: HashMap<String, HashMap<String, u32>>,
 }
 
-/// Computes Levenshtein edit distance between two strings.
-pub fn edit_distance(a: &str, b: &str) -> usize {
-    let a_chars: Vec<char> = a.chars().collect();
-    let b_chars: Vec<char> = b.chars().collect();
-    let (m, n) = (a_chars.len(), b_chars.len());
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CasingStyle {
+    Lower,
+    Title,
+    AllCaps,
+}
 
-    let mut dp = vec![vec![0usize; n + 1]; m + 1];
-    for i in 0..=m {
-        dp[i][0] = i;
-    }
-    for j in 0..=n {
-        dp[0][j] = j;
-    }
+#[derive(Debug, Clone)]
+struct WordEntry {
+    canonical: String,
+    lower: String,
+    clean: String,
+    log_freq: f64,
+}
 
-    for i in 1..=m {
-        for j in 1..=n {
-            let cost = if a_chars[i - 1].to_lowercase().next() == b_chars[j - 1].to_lowercase().next() {
-                0
-            } else {
-                1
-            };
-            dp[i][j] = (dp[i - 1][j] + 1)
-                .min(dp[i][j - 1] + 1)
-                .min(dp[i - 1][j - 1] + cost);
+/// High-performance Rust suggestion index using prefix buckets,
+/// log-scaled Zipf frequencies, SymSpell delete sets, and layout-aware spatial distances.
+#[derive(Debug, Clone, Default)]
+pub struct SuggestionIndex {
+    entries: Vec<WordEntry>,
+    exact_clean: HashMap<String, Vec<usize>>,
+    prefix1: HashMap<char, Vec<usize>>,
+    prefix2: HashMap<(char, char), Vec<usize>>,
+    symspell_deletes: HashMap<String, Vec<u32>>,
+    bigrams: HashMap<String, HashMap<String, f64>>,
+    trigrams: HashMap<String, HashMap<String, f64>>,
+}
+
+impl SuggestionIndex {
+    /// Builds a fast runtime index from a word frequency list (`word\tfreq` lines)
+    /// and one or more JSON ngram models.
+    pub fn build(word_tsv: &str, json_overlays: &[&str]) -> Self {
+        let mut word_counts: HashMap<String, u64> = HashMap::new();
+        let mut bigrams: HashMap<String, HashMap<String, f64>> = HashMap::new();
+        let mut trigrams: HashMap<String, HashMap<String, f64>> = HashMap::new();
+
+        for line in word_tsv.lines() {
+            let mut parts = line.split_whitespace();
+            if let (Some(w), Some(c_str)) = (parts.next(), parts.next()) {
+                if let Ok(c) = c_str.parse::<u64>() {
+                    word_counts
+                        .entry(w.to_string())
+                        .and_modify(|e| *e = (*e).max(c))
+                        .or_insert(c);
+                }
+            }
+        }
+
+        for json_str in json_overlays {
+            if json_str.trim().is_empty() {
+                continue;
+            }
+            if let Ok(model) = serde_json::from_str::<DictionaryModel>(json_str) {
+                for (w, c) in model.words {
+                    let c64 = u64::from(c);
+                    word_counts
+                        .entry(w)
+                        .and_modify(|e| *e = (*e).max(c64))
+                        .or_insert(c64);
+                }
+                for (k, next_map) in model.bigrams {
+                    let key_lower = k.to_lowercase();
+                    let target = bigrams.entry(key_lower).or_default();
+                    for (nw, sc) in next_map {
+                        let log_s = (f64::from(sc) + 1.0).log10() * 100.0;
+                        target
+                            .entry(nw)
+                            .and_modify(|e| *e = e.max(log_s))
+                            .or_insert(log_s);
+                    }
+                }
+                for (k, next_map) in model.trigrams {
+                    let key_lower = k.to_lowercase();
+                    let target = trigrams.entry(key_lower).or_default();
+                    for (nw, sc) in next_map {
+                        let log_s = (f64::from(sc) + 1.0).log10() * 100.0;
+                        target
+                            .entry(nw)
+                            .and_modify(|e| *e = e.max(log_s))
+                            .or_insert(log_s);
+                    }
+                }
+            }
+        }
+
+        let mut entries: Vec<WordEntry> = word_counts
+            .into_iter()
+            .map(|(canonical, freq)| {
+                let lower = canonical.to_lowercase();
+                let clean = strip_accents(&lower);
+                let log_freq = ((freq as f64) + 1.0).log10() * 100.0;
+                WordEntry {
+                    canonical,
+                    lower,
+                    clean,
+                    log_freq,
+                }
+            })
+            .collect();
+
+        // Sort descending by frequency so prefix buckets naturally iterate highest-frequency first.
+        entries.sort_by(|a, b| {
+            b.log_freq
+                .partial_cmp(&a.log_freq)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let mut exact_clean: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut prefix1: HashMap<char, Vec<usize>> = HashMap::new();
+        let mut prefix2: HashMap<(char, char), Vec<usize>> = HashMap::new();
+        let mut symspell_deletes: HashMap<String, Vec<u32>> = HashMap::new();
+
+        for (idx, entry) in entries.iter().enumerate() {
+            exact_clean
+                .entry(entry.clean.clone())
+                .or_default()
+                .push(idx);
+            let mut chars = entry.clean.chars();
+            if let Some(c1) = chars.next() {
+                prefix1.entry(c1).or_default().push(idx);
+                if let Some(c2) = chars.next() {
+                    prefix2.entry((c1, c2)).or_default().push(idx);
+                }
+            }
+
+            // Build SymSpell distance-1 delete index for top 15,000 entries of length >= 3
+            if idx < 15_000 {
+                let c_chars: Vec<char> = entry.clean.chars().collect();
+                if c_chars.len() >= 3 {
+                    let idx_u32 = idx as u32;
+                    for skip in 0..c_chars.len() {
+                        let del: String = c_chars
+                            .iter()
+                            .enumerate()
+                            .filter(|&(i, _)| i != skip)
+                            .map(|(_, &c)| c)
+                            .collect();
+                        let list = symspell_deletes.entry(del).or_default();
+                        if list.len() < 24 && !list.contains(&idx_u32) {
+                            list.push(idx_u32);
+                        }
+                    }
+                }
+            }
+        }
+
+        Self {
+            entries,
+            exact_clean,
+            prefix1,
+            prefix2,
+            symspell_deletes,
+            bigrams,
+            trigrams,
         }
     }
-    dp[m][n]
-}
 
-/// Normalizes accented characters for fuzzy search (e.g. môgô -> mogo).
-pub fn strip_accents(s: &str) -> String {
-    s.chars().map(|c| match c {
-        'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => 'a',
-        'è' | 'é' | 'ê' | 'ë' => 'e',
-        'ì' | 'í' | 'î' | 'ï' => 'i',
-        'ò' | 'ó' | 'ô' | 'õ' | 'ö' => 'o',
-        'ù' | 'ú' | 'û' | 'ü' => 'u',
-        'ç' => 'c',
-        'ñ' => 'n',
-        other => other,
-    }).collect()
-}
+    pub fn query(
+        &self,
+        context_words: &[String],
+        prefix: &str,
+        mode: &str,
+        layout_id: &str,
+        capitalize_hint: bool,
+        max_results: usize,
+    ) -> Vec<SuggestionCandidate> {
+        let is_advanced = mode == "advanced_autocomplete";
+        let trimmed_prefix = prefix.trim();
+        let norm_lower = trimmed_prefix.to_lowercase();
+        let clean_prefix = strip_accents(&norm_lower);
 
-/// Evaluates suggestions given dictionary model, preceding context words, and prefix.
-pub fn query_suggestions(
-    dict: &DictionaryModel,
-    context_words: &[String],
-    prefix: &str,
-    mode: &str,
-    max_results: usize,
-) -> Vec<SuggestionCandidate> {
-    let is_advanced = mode == "advanced_autocomplete";
-    let norm_prefix = prefix.trim().to_lowercase();
-    let norm_clean_prefix = strip_accents(&norm_prefix);
+        let casing = detect_casing(trimmed_prefix, capitalize_hint);
 
-    let mut scored: Vec<(String, f64, bool)> = Vec::new();
+        // Clean Start: if no prefix and no preceding context words, return empty
+        // so the toolbar displays tools cleanly (never dumping raw stopwords like "je - est - tu").
+        if clean_prefix.is_empty() {
+            if context_words.is_empty() {
+                return Vec::new();
+            }
+            return self.query_next_word(context_words, is_advanced, casing, max_results);
+        }
 
-    if norm_prefix.is_empty() {
-        // Next-word prediction (Trigram sweet-spot -> Bigram -> Unigram)
+        let mut candidates: Vec<(String, f64, bool)> = Vec::new();
+        let mut seen_idx: HashSet<usize> = HashSet::new();
+
+        // 1. Exact lowercase/accent-stripped match lookup
+        if let Some(exact_indices) = self.exact_clean.get(&clean_prefix) {
+            for &idx in exact_indices {
+                if seen_idx.insert(idx) {
+                    let entry = &self.entries[idx];
+                    let is_exact_diacritic = entry.lower == norm_lower;
+                    let mut score = entry.log_freq + if is_exact_diacritic { 320.0 } else { 260.0 };
+                    score += self.context_boost(&entry.lower, context_words, is_advanced);
+                    candidates.push((entry.canonical.clone(), score, true));
+                }
+            }
+        }
+
+        // 2. Prefix lookup from sorted 2-char / 1-char bucket
+        let mut p_chars = clean_prefix.chars();
+        let bucket_opt: Option<&Vec<usize>> = match (p_chars.next(), p_chars.next()) {
+            (Some(c1), Some(c2)) => self.prefix2.get(&(c1, c2)),
+            (Some(c1), None) => self.prefix1.get(&c1),
+            _ => None,
+        };
+
+        if let Some(bucket) = bucket_opt {
+            let mut prefix_hits = 0usize;
+            for &idx in bucket {
+                if seen_idx.contains(&idx) {
+                    continue;
+                }
+                let entry = &self.entries[idx];
+                if entry.clean.starts_with(&clean_prefix) {
+                    seen_idx.insert(idx);
+                    let len_diff = entry
+                        .clean
+                        .chars()
+                        .count()
+                        .saturating_sub(clean_prefix.chars().count());
+                    let exact_diacritic_prefix = entry.lower.starts_with(&norm_lower);
+                    let mut score = entry.log_freq
+                        + if exact_diacritic_prefix { 180.0 } else { 140.0 }
+                        - (len_diff as f64) * 14.0;
+                    score += self.context_boost(&entry.lower, context_words, is_advanced);
+                    candidates.push((entry.canonical.clone(), score, false));
+                    prefix_hits += 1;
+                    // Bucket is pre-sorted by frequency; inspecting top 60 prefix hits is plenty.
+                    if prefix_hits >= 60 {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 3. Advanced Autocomplete: SymSpell distance-1 typo & spatial key proximity
+        let prefix_len = clean_prefix.chars().count();
+        if is_advanced && prefix_len >= 3 {
+            let p_vec: Vec<char> = clean_prefix.chars().collect();
+            let mut probe_keys: Vec<String> = Vec::with_capacity(p_vec.len() + 1);
+            probe_keys.push(clean_prefix.clone());
+            for skip in 0..p_vec.len() {
+                let del: String = p_vec
+                    .iter()
+                    .enumerate()
+                    .filter(|&(i, _)| i != skip)
+                    .map(|(_, &c)| c)
+                    .collect();
+                probe_keys.push(del);
+            }
+
+            let mut fuzzy_checked = 0usize;
+            for key in probe_keys {
+                if let Some(hit_indices) = self.symspell_deletes.get(&key) {
+                    for &idx_u32 in hit_indices {
+                        let idx = idx_u32 as usize;
+                        if seen_idx.contains(&idx) {
+                            continue;
+                        }
+                        let entry = &self.entries[idx];
+                        let w_len = entry.clean.chars().count();
+                        if w_len.abs_diff(prefix_len) > 1 {
+                            continue;
+                        }
+                        let dist = spatial_damerau_distance(&clean_prefix, &entry.clean, layout_id);
+                        if dist <= 1.15 {
+                            seen_idx.insert(idx);
+                            let mut score = entry.log_freq + (1.2 - dist) * 190.0;
+                            score += self.context_boost(&entry.lower, context_words, true);
+                            candidates.push((entry.canonical.clone(), score, false));
+                            fuzzy_checked += 1;
+                            if fuzzy_checked >= 40 {
+                                break;
+                            }
+                        }
+                    }
+                }
+                if fuzzy_checked >= 40 {
+                    break;
+                }
+            }
+        }
+
+        candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let mut results = Vec::new();
+        for (word, score, is_exact) in candidates {
+            let cased = apply_casing(&word, casing);
+            if !results
+                .iter()
+                .any(|r: &SuggestionCandidate| r.word.eq_ignore_ascii_case(&cased))
+            {
+                results.push(SuggestionCandidate {
+                    word: cased,
+                    confidence: score,
+                    is_exact,
+                });
+                if results.len() >= max_results {
+                    break;
+                }
+            }
+        }
+
+        results
+    }
+
+    fn query_next_word(
+        &self,
+        context_words: &[String],
+        is_advanced: bool,
+        casing: CasingStyle,
+        max_results: usize,
+    ) -> Vec<SuggestionCandidate> {
+        let mut next_candidates: Vec<(String, f64)> = Vec::new();
+
         if is_advanced && context_words.len() >= 2 {
             let last_two = format!(
                 "{} {}",
                 context_words[context_words.len() - 2].to_lowercase(),
                 context_words[context_words.len() - 1].to_lowercase()
             );
-            if let Some(tri_matches) = dict.trigrams.get(&last_two) {
-                for (word, count) in tri_matches {
-                    scored.push((word.clone(), *count as f64 * 3.0, false));
+            if let Some(tri) = self.trigrams.get(&last_two) {
+                for (w, s) in tri {
+                    next_candidates.push((w.clone(), *s * 2.2));
                 }
             }
         }
 
-        if scored.len() < max_results && context_words.last().is_some() {
-            let prev = context_words.last().unwrap().to_lowercase();
-            if let Some(bi_matches) = dict.bigrams.get(&prev) {
-                for (word, count) in bi_matches {
-                    if !scored.iter().any(|(w, _, _)| w == word) {
-                        scored.push((word.clone(), *count as f64 * 2.0, false));
+        if let Some(prev) = context_words.last() {
+            let prev_lower = prev.to_lowercase();
+            if let Some(bi) = self.bigrams.get(&prev_lower) {
+                for (w, s) in bi {
+                    if !next_candidates.iter().any(|(ew, _)| ew == w) {
+                        next_candidates.push((w.clone(), *s * 1.4));
                     }
                 }
             }
         }
 
-        if scored.len() < max_results {
-            let mut top_unigrams: Vec<(&String, &u32)> = dict.words.iter().collect();
-            top_unigrams.sort_by(|a, b| b.1.cmp(a.1));
-            for (word, count) in top_unigrams.into_iter().take(max_results * 2) {
-                if !scored.iter().any(|(w, _, _)| w == word) {
-                    scored.push((word.clone(), *count as f64 * 0.5, false));
+        // Do not pad with unrelated random unigrams when context produces no bigram/trigram predictions
+        if next_candidates.is_empty() {
+            return Vec::new();
+        }
+
+        next_candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let mut results = Vec::new();
+        for (word, score) in next_candidates {
+            let cased = apply_casing(&word, casing);
+            if !results
+                .iter()
+                .any(|r: &SuggestionCandidate| r.word.eq_ignore_ascii_case(&cased))
+            {
+                results.push(SuggestionCandidate {
+                    word: cased,
+                    confidence: score,
+                    is_exact: false,
+                });
+                if results.len() >= max_results {
+                    break;
                 }
             }
         }
-    } else {
-        // Prefix matching + Context boosting
-        for (word, count) in &dict.words {
-            let word_lower = word.to_lowercase();
-            let word_clean = strip_accents(&word_lower);
-
-            let is_exact = word_lower == norm_prefix;
-            let starts_with_exact = word_lower.starts_with(&norm_prefix);
-            let starts_with_clean = word_clean.starts_with(&norm_clean_prefix);
-
-            if starts_with_exact || starts_with_clean {
-                let mut score = *count as f64;
-                if is_exact {
-                    score += 5000.0;
-                } else if starts_with_exact {
-                    score += 2000.0;
-                } else {
-                    score += 1500.0;
-                }
-
-                // Shorter words closer to prefix get slight boost
-                let len_diff = word_lower.len().saturating_sub(norm_prefix.len());
-                score -= (len_diff as f64) * 10.0;
-
-                // Contextual boost in advanced mode
-                if is_advanced && context_words.len() >= 2 {
-                    let last_two = format!(
-                        "{} {}",
-                        context_words[context_words.len() - 2].to_lowercase(),
-                        context_words[context_words.len() - 1].to_lowercase()
-                    );
-                    if let Some(tri) = dict.trigrams.get(&last_two) {
-                        if let Some(tri_count) = tri.get(word) {
-                            score += (*tri_count as f64) * 4.0;
-                        }
-                    }
-                }
-
-                if is_advanced && context_words.last().is_some() {
-                    let prev = context_words.last().unwrap().to_lowercase();
-                    if let Some(bi) = dict.bigrams.get(&prev) {
-                        if let Some(bi_count) = bi.get(word) {
-                            score += (*bi_count as f64) * 2.5;
-                        }
-                    }
-                }
-
-                scored.push((word.clone(), score, is_exact));
-            } else if is_advanced && norm_prefix.len() >= 3 {
-                // Typo tolerance (Levenshtein distance <= 1)
-                let dist = edit_distance(&norm_clean_prefix, &word_clean.chars().take(norm_clean_prefix.len() + 1).collect::<String>());
-                if dist <= 1 {
-                    let score = (*count as f64) * 0.4;
-                    scored.push((word.clone(), score, false));
-                }
-            }
-        }
+        results
     }
 
-    // Sort descending by score
-    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-    let mut results: Vec<SuggestionCandidate> = Vec::new();
-    for (word, score, is_exact) in scored {
-        if !results.iter().any(|r| r.word.eq_ignore_ascii_case(&word)) {
-            results.push(SuggestionCandidate {
-                word,
-                confidence: score,
-                is_exact,
-            });
-            if results.len() >= max_results {
-                break
+    fn context_boost(&self, word_lower: &str, context_words: &[String], is_advanced: bool) -> f64 {
+        if !is_advanced || context_words.is_empty() {
+            return 0.0;
+        }
+        let mut boost = 0.0;
+        if context_words.len() >= 2 {
+            let last_two = format!(
+                "{} {}",
+                context_words[context_words.len() - 2].to_lowercase(),
+                context_words[context_words.len() - 1].to_lowercase()
+            );
+            if let Some(tri) = self.trigrams.get(&last_two) {
+                if let Some(s) = tri.get(word_lower) {
+                    boost += *s * 1.5;
+                }
             }
         }
+        if let Some(prev) = context_words.last() {
+            let prev_lower = prev.to_lowercase();
+            if let Some(bi) = self.bigrams.get(&prev_lower) {
+                if let Some(s) = bi.get(word_lower) {
+                    boost += *s * 0.9;
+                }
+            }
+        }
+        boost
     }
-
-    results
 }
 
-/// Uniffi export to query suggestions from a raw JSON dictionary model.
+/// Detects intended casing style from user input and active shift/auto-cap state.
+pub fn detect_casing(prefix: &str, capitalize_hint: bool) -> CasingStyle {
+    let letters: Vec<char> = prefix.chars().filter(|c| c.is_alphabetic()).collect();
+    if letters.len() >= 2 && letters.iter().all(|c| c.is_uppercase()) {
+        CasingStyle::AllCaps
+    } else if letters.first().is_some_and(|c| c.is_uppercase()) || capitalize_hint {
+        CasingStyle::Title
+    } else {
+        CasingStyle::Lower
+    }
+}
+
+/// Formats a canonical dictionary word into the target casing style.
+pub fn apply_casing(canonical: &str, style: CasingStyle) -> String {
+    match style {
+        CasingStyle::AllCaps => canonical.to_uppercase(),
+        CasingStyle::Title => {
+            let mut chars = canonical.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => {
+                    let mut out = first.to_uppercase().to_string();
+                    out.push_str(chars.as_str());
+                    out
+                }
+            }
+        }
+        CasingStyle::Lower => canonical.to_string(),
+    }
+}
+
+/// Normalizes accented characters for accent-insensitive prefix matching.
+pub fn strip_accents(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => 'a',
+            'è' | 'é' | 'ê' | 'ë' => 'e',
+            'ì' | 'í' | 'î' | 'ï' => 'i',
+            'ò' | 'ó' | 'ô' | 'õ' | 'ö' => 'o',
+            'ù' | 'ú' | 'û' | 'ü' => 'u',
+            'ç' => 'c',
+            'ñ' => 'n',
+            'ÿ' => 'y',
+            other => other,
+        })
+        .collect()
+}
+
+/// Computes physical 2D key substitution cost based on QWERTY/AZERTY proximity.
+fn key_substitution_cost(a: char, b: char, layout_id: &str) -> f64 {
+    if a == b {
+        return 0.0;
+    }
+    let pos_a = key_coords(a, layout_id);
+    let pos_b = key_coords(b, layout_id);
+    if let (Some((ra, ca)), Some((rb, cb))) = (pos_a, pos_b) {
+        let dr = ra - rb;
+        let dc = ca - cb;
+        let dist_sq = dr * dr + dc * dc;
+        if dist_sq <= 2.1 {
+            // Adjacent key on virtual layout ("fat-finger" tolerance)
+            return 0.35;
+        }
+    }
+    1.0
+}
+
+fn key_coords(ch: char, layout_id: &str) -> Option<(f64, f64)> {
+    let rows: [&str; 3] = if layout_id.contains("fr") {
+        ["azertyuiop", "qsdfghjklm", "wxcvbn"]
+    } else {
+        ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
+    };
+    let offsets = [0.0_f64, 0.25, 0.75];
+    for (r_idx, row) in rows.iter().enumerate() {
+        if let Some(c_idx) = row.chars().position(|c| c == ch) {
+            return Some((r_idx as f64, (c_idx as f64) + offsets[r_idx]));
+        }
+    }
+    None
+}
+
+/// Layout-aware Damerau-Levenshtein distance with adjacent key discount.
+pub fn spatial_damerau_distance(a: &str, b: &str, layout_id: &str) -> f64 {
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let m = a_chars.len();
+    let n = b_chars.len();
+
+    let mut dp = vec![vec![0.0_f64; n + 1]; m + 1];
+    for (i, row) in dp.iter_mut().enumerate().take(m + 1) {
+        row[0] = i as f64;
+    }
+    for (j, cell) in dp[0].iter_mut().enumerate().take(n + 1) {
+        *cell = j as f64;
+    }
+
+    for i in 1..=m {
+        for j in 1..=n {
+            let sub_cost = key_substitution_cost(a_chars[i - 1], b_chars[j - 1], layout_id);
+            let mut best = (dp[i - 1][j] + 1.0)
+                .min(dp[i][j - 1] + 1.0)
+                .min(dp[i - 1][j - 1] + sub_cost);
+
+            if i > 1
+                && j > 1
+                && a_chars[i - 1] == b_chars[j - 2]
+                && a_chars[i - 2] == b_chars[j - 1]
+            {
+                best = best.min(dp[i - 2][j - 2] + 0.65);
+            }
+            dp[i][j] = best;
+        }
+    }
+    dp[m][n]
+}
+
+/// UniFFI export for querying a single JSON dictionary directly.
 pub fn get_suggestions_from_json(
     dict_json: &str,
     context_words: Vec<String>,
@@ -197,83 +539,230 @@ pub fn get_suggestions_from_json(
     mode: String,
     max_results: u32,
 ) -> Vec<SuggestionCandidate> {
-    let dict: DictionaryModel = match serde_json::from_str(dict_json) {
-        Ok(d) => d,
-        Err(_) => return Vec::new(),
+    let index = SuggestionIndex::build("", &[dict_json]);
+    index.query(
+        &context_words,
+        &prefix,
+        &mode,
+        "azerty_fr",
+        false,
+        max_results as usize,
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Global cached engine + Android JNI entrypoints
+// ---------------------------------------------------------------------------
+
+#[derive(Default)]
+struct EngineCache {
+    en: Option<SuggestionIndex>,
+    fr: Option<SuggestionIndex>,
+    fr_ci: Option<SuggestionIndex>,
+}
+
+static GLOBAL_ENGINE: OnceLock<Mutex<EngineCache>> = OnceLock::new();
+
+fn engine_mutex() -> &'static Mutex<EngineCache> {
+    GLOBAL_ENGINE.get_or_init(|| Mutex::new(EngineCache::default()))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_thamnis_thkb_engine_NativeSuggestionBridge_nativeInitDictionaries(
+    mut env: jni::JNIEnv,
+    _class: jni::objects::JClass,
+    en_tsv: jni::objects::JString,
+    en_common_json: jni::objects::JString,
+    fr_tsv: jni::objects::JString,
+    fr_common_json: jni::objects::JString,
+    fr_ci_json: jni::objects::JString,
+) -> jni::sys::jboolean {
+    let read_str = |env: &mut jni::JNIEnv, s: jni::objects::JString| -> String {
+        env.get_string(&s)
+            .map(|js| js.to_string_lossy().into_owned())
+            .unwrap_or_default()
     };
 
-    query_suggestions(&dict, &context_words, &prefix, &mode, max_results as usize)
+    let en_tsv_s = read_str(&mut env, en_tsv);
+    let en_json_s = read_str(&mut env, en_common_json);
+    let fr_tsv_s = read_str(&mut env, fr_tsv);
+    let fr_json_s = read_str(&mut env, fr_common_json);
+    let fr_ci_s = read_str(&mut env, fr_ci_json);
+
+    let en_idx = SuggestionIndex::build(&en_tsv_s, &[&en_json_s]);
+    let fr_idx = SuggestionIndex::build(&fr_tsv_s, &[&fr_json_s]);
+    let fr_ci_idx = SuggestionIndex::build(&fr_tsv_s, &[&fr_json_s, &fr_ci_s]);
+
+    if let Ok(mut guard) = engine_mutex().lock() {
+        guard.en = Some(en_idx);
+        guard.fr = Some(fr_idx);
+        guard.fr_ci = Some(fr_ci_idx);
+        1
+    } else {
+        0
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+#[no_mangle]
+pub extern "system" fn Java_com_thamnis_thkb_engine_NativeSuggestionBridge_nativeQuerySuggestions(
+    mut env: jni::JNIEnv,
+    _class: jni::objects::JClass,
+    layout_id: jni::objects::JString,
+    context_joined: jni::objects::JString,
+    prefix: jni::objects::JString,
+    mode: jni::objects::JString,
+    ivorian_enabled: jni::sys::jboolean,
+    capitalize_hint: jni::sys::jboolean,
+    max_results: jni::sys::jint,
+) -> jni::sys::jstring {
+    let layout_s: String = env
+        .get_string(&layout_id)
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let ctx_s: String = env
+        .get_string(&context_joined)
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let prefix_s: String = env
+        .get_string(&prefix)
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mode_s: String = env
+        .get_string(&mode)
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "advanced_autocomplete".to_string());
+
+    let context_words: Vec<String> = ctx_s
+        .split('\u{001F}')
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
+        .collect();
+
+    let is_fr = layout_s.contains("fr") || layout_s.contains("ci");
+    let use_ci = is_fr && ivorian_enabled != 0;
+
+    let candidates = if let Ok(guard) = engine_mutex().lock() {
+        let index_opt = if use_ci {
+            guard.fr_ci.as_ref().or(guard.fr.as_ref())
+        } else if is_fr {
+            guard.fr.as_ref()
+        } else {
+            guard.en.as_ref()
+        };
+        index_opt
+            .map(|idx| {
+                idx.query(
+                    &context_words,
+                    &prefix_s,
+                    &mode_s,
+                    &layout_s,
+                    capitalize_hint != 0,
+                    max_results.max(1) as usize,
+                )
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    let json = serde_json::to_string(&candidates).unwrap_or_else(|_| "[]".to_string());
+    env.new_string(json)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn sample_model() -> DictionaryModel {
-        let mut words = HashMap::new();
-        words.insert("bonjour".to_string(), 900);
-        words.insert("bon".to_string(), 1200);
-        words.insert("môgô".to_string(), 800);
-        words.insert("djossi".to_string(), 750);
-        words.insert("enjaillement".to_string(), 700);
-        words.insert("sciencer".to_string(), 680);
-        words.insert("ya".to_string(), 600);
-        words.insert("fohi".to_string(), 580);
-        words.insert("chap".to_string(), 550);
-        words.insert("chap-chap".to_string(), 520);
-
-        let mut bigrams = HashMap::new();
-        let mut ya_next = HashMap::new();
-        ya_next.insert("fohi".to_string(), 950);
-        bigrams.insert("ya".to_string(), ya_next);
-
-        let mut chap_next = HashMap::new();
-        chap_next.insert("chap-chap".to_string(), 900);
-        bigrams.insert("chap".to_string(), chap_next);
-
-        let mut trigrams = HashMap::new();
-        let mut sci_next = HashMap::new();
-        sci_next.insert("sciencer".to_string(), 980);
-        trigrams.insert("il faut".to_string(), sci_next);
-
-        DictionaryModel {
-            words,
-            bigrams,
-            trigrams,
-        }
+    fn sample_index() -> SuggestionIndex {
+        let tsv = "de\t8000000\nje\t7500000\nest\t6500000\ntu\t4000000\nbonjour\t150000\nbon\t200000\nmanger\t120000\nfaire\t250000\n";
+        let ci_json = r#"{
+            "words": {
+                "môgô": 80000,
+                "enjaillement": 72000,
+                "sciencer": 70000,
+                "ya": 60000,
+                "fohi": 67000,
+                "Abidjan": 90000
+            },
+            "bigrams": {
+                "ya": { "fohi": 990 }
+            },
+            "trigrams": {
+                "il faut": { "sciencer": 980 }
+            }
+        }"#;
+        SuggestionIndex::build(tsv, &[ci_json])
     }
 
     #[test]
-    fn autocomplete_prefix_matches_ivorian_nouchi() {
-        let dict = sample_model();
-        let suggestions = query_suggestions(&dict, &[], "enj", "autocomplete", 3);
-        assert!(!suggestions.is_empty());
-        assert_eq!(suggestions[0].word, "enjaillement");
+    fn clean_start_returns_empty_on_empty_context() {
+        let idx = sample_index();
+        let results = idx.query(&[], "", "advanced_autocomplete", "azerty_fr", true, 3);
+        assert!(results.is_empty());
     }
 
     #[test]
-    fn advanced_autocomplete_boosts_trigram_context() {
-        let dict = sample_model();
-        let context = vec!["il".to_string(), "faut".to_string()];
-        let suggestions = query_suggestions(&dict, &context, "", "advanced_autocomplete", 3);
-        assert!(!suggestions.is_empty());
-        assert_eq!(suggestions[0].word, "sciencer");
+    fn case_alignment_matches_lowercase_and_preserves_display_casing() {
+        let idx = sample_index();
+
+        let lower = idx.query(&[], "bonj", "autocomplete", "azerty_fr", false, 3);
+        assert_eq!(lower[0].word, "bonjour");
+
+        let title = idx.query(&[], "Bonj", "autocomplete", "azerty_fr", false, 3);
+        assert_eq!(title[0].word, "Bonjour");
+
+        let autocap = idx.query(&[], "bonj", "autocomplete", "azerty_fr", true, 3);
+        assert_eq!(autocap[0].word, "Bonjour");
+
+        let caps = idx.query(&[], "BONJ", "autocomplete", "azerty_fr", false, 3);
+        assert_eq!(caps[0].word, "BONJOUR");
+
+        // Canonical proper noun preserved even in lowercase prefix
+        let city = idx.query(&[], "abidj", "autocomplete", "azerty_fr", false, 3);
+        assert_eq!(city[0].word, "Abidjan");
     }
 
     #[test]
-    fn advanced_autocomplete_bigram_next_word() {
-        let dict = sample_model();
-        let context = vec!["ya".to_string()];
-        let suggestions = query_suggestions(&dict, &context, "", "advanced_autocomplete", 3);
-        assert!(!suggestions.is_empty());
-        assert_eq!(suggestions[0].word, "fohi");
+    fn symspell_spatial_fixes_adjacent_typo() {
+        let idx = sample_index();
+        // 'p' is right next to 'o' on AZERTY/QWERTY: "bpnjour" -> "bonjour"
+        let results = idx.query(
+            &[],
+            "bpnjour",
+            "advanced_autocomplete",
+            "azerty_fr",
+            false,
+            3,
+        );
+        assert!(!results.is_empty());
+        assert_eq!(results[0].word, "bonjour");
     }
 
     #[test]
-    fn strips_accents_and_matches_mogo() {
-        let dict = sample_model();
-        let suggestions = query_suggestions(&dict, &[], "mogo", "advanced_autocomplete", 3);
-        assert!(!suggestions.is_empty());
-        assert_eq!(suggestions[0].word, "môgô");
+    fn advanced_autocomplete_trigram_and_bigram() {
+        let idx = sample_index();
+        let ctx = vec!["il".to_string(), "faut".to_string()];
+        let tri = idx.query(&ctx, "", "advanced_autocomplete", "azerty_fr", false, 3);
+        assert_eq!(tri[0].word, "sciencer");
+
+        let bi = idx.query(
+            &["ya".to_string()],
+            "",
+            "advanced_autocomplete",
+            "azerty_fr",
+            false,
+            3,
+        );
+        assert_eq!(bi[0].word, "fohi");
+    }
+
+    #[test]
+    fn strips_accents_for_nouchi_lookup() {
+        let idx = sample_index();
+        let res = idx.query(&[], "mogo", "autocomplete", "azerty_fr", false, 3);
+        assert_eq!(res[0].word, "môgô");
     }
 }
