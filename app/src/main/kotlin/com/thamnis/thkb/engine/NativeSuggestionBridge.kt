@@ -15,8 +15,10 @@ internal object NativeSuggestionBridge {
         enCommonJson: String,
         frTsv: String,
         frCommonJson: String,
-        frCiJson: String,
+        initialOverlayJson: String,
     ): Boolean
+
+    external fun nativeSyncDialects(overlayJson: String): Boolean
 
     external fun nativeQuerySuggestions(
         layoutId: String,

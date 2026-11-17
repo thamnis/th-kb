@@ -248,6 +248,7 @@ fun KeyboardRoot(
     var isForwardDeleteMode by remember(inputSessionKey) { mutableStateOf(false) }
     var ctrlActive by remember(inputSessionKey) { mutableStateOf(false) }
     var scrollPanelHeightDp by remember { mutableStateOf(250f) }
+    val emojiGridState = rememberLazyGridState()
     val density = LocalDensity.current
     var rootWidthPx by remember { mutableStateOf(1080f) }
 
@@ -302,82 +303,23 @@ fun KeyboardRoot(
                         .navigationBarsPadding()
                         .padding(bottom = 10.dp),
                 ) {
-                    if (panelMode != PanelMode.EMOJI && panelMode != PanelMode.KAOMOJI) {
-                        ToolbarRow(
-                            panelMode = panelMode,
-                            canResize = canResizePanel,
-                            isExpanded = canResizePanel && scrollPanelHeightDp > 300f,
-                            onResizeDeltaDp = { deltaDp ->
-                                scrollPanelHeightDp = (scrollPanelHeightDp - deltaDp).coerceIn(250f, 460f)
-                            },
-                            onToggleExpand = {
-                                scrollPanelHeightDp = if (scrollPanelHeightDp > 300f) 250f else 420f
-                            },
-                            onToggleEmoji = {
-                                panelMode = PanelMode.EMOJI
-                            },
-                            onToggleClipboard = {
-                                panelMode = if (panelMode == PanelMode.CLIPBOARD) PanelMode.KEYBOARD else PanelMode.CLIPBOARD
-                            },
-                            onToggleTodo = {
-                                panelMode = if (panelMode == PanelMode.TODO) PanelMode.KEYBOARD else PanelMode.TODO
-                            },
-                            onOpenSettings = {
-                                onKeyFeedback()
-                                onOpenSettings()
-                            },
-                            suggestions = suggestions,
-                            onSelectSuggestion = onSelectSuggestion,
-                            onBlockSuggestion = onBlockSuggestion,
-                            onUndo = onUndo,
-                            onRedo = onRedo,
-                        )
-                    }
-
-                    if (inputContext == InputContext.TERMINAL && panelMode == PanelMode.KEYBOARD) {
-                        TerminalQuickBar(
-                            ctrlActive = ctrlActive,
-                            onToggleCtrl = {
-                                onKeyFeedback()
-                                ctrlActive = !ctrlActive
-                            },
-                            onSendKey = { keyCode ->
-                                onKeyFeedback()
-                                onSendKeyEvent(keyCode)
-                            },
-                            onCommitText = { text ->
-                                onKeyFeedback()
-                                onCommitText(text)
-                            },
-                        )
-                    }
-
+                    val isEmojiPanel = panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI
                     AnimatedContent(
-                        targetState = panelMode,
+                        targetState = isEmojiPanel,
                         transitionSpec = {
-                            if (targetState == PanelMode.EMOJI || targetState == PanelMode.KAOMOJI) {
-                                (slideInVertically(animationSpec = tween(220, easing = FastOutSlowInEasing)) { it / 4 } +
-                                    fadeIn(animationSpec = tween(200)) + scaleIn(initialScale = 0.96f, animationSpec = tween(200)))
-                                    .togetherWith(
-                                        slideOutVertically(animationSpec = tween(180, easing = FastOutSlowInEasing)) { -it / 6 } +
-                                            fadeOut(animationSpec = tween(140))
-                                    )
-                            } else if (initialState == PanelMode.EMOJI || initialState == PanelMode.KAOMOJI) {
-                                (slideInVertically(animationSpec = tween(220, easing = FastOutSlowInEasing)) { -it / 6 } +
-                                    fadeIn(animationSpec = tween(200)) + scaleIn(initialScale = 0.96f, animationSpec = tween(200)))
-                                    .togetherWith(
-                                        slideOutVertically(animationSpec = tween(180, easing = FastOutSlowInEasing)) { it / 4 } +
-                                            fadeOut(animationSpec = tween(140))
-                                    )
+                            if (targetState) {
+                                (fadeIn(animationSpec = tween(140, easing = FastOutSlowInEasing)) +
+                                    slideInVertically(animationSpec = tween(150, easing = FastOutSlowInEasing)) { it / 16 })
+                                    .togetherWith(fadeOut(animationSpec = tween(100)))
                             } else {
-                                (fadeIn(animationSpec = tween(160)) + scaleIn(initialScale = 0.96f, animationSpec = tween(160)))
-                                    .togetherWith(fadeOut(animationSpec = tween(120)))
+                                (fadeIn(animationSpec = tween(140, easing = FastOutSlowInEasing)) +
+                                    slideInVertically(animationSpec = tween(150, easing = FastOutSlowInEasing)) { -it / 18 })
+                                    .togetherWith(fadeOut(animationSpec = tween(100)))
                             }
                         },
-                        label = "panelModeTransition",
-                    ) { currentPanelMode ->
-                        when (currentPanelMode) {
-                            PanelMode.EMOJI, PanelMode.KAOMOJI -> {
+                        label = "emojiContainerTransition",
+                    ) { showEmoji ->
+                        if (showEmoji) {
                             EmojiAndKaomojiPanel(
                                 panelHeightDp = (scrollPanelHeightDp + 44f).coerceIn(294f, 504f),
                                 emojiGridColumns = emojiGridColumns,
@@ -385,6 +327,7 @@ fun KeyboardRoot(
                                 kaomojiItems = kaomojiItems,
                                 favoriteItems = favoriteItems,
                                 recentEmojis = recentEmojis,
+                                emojiGridState = emojiGridState,
                                 onResizeDeltaDp = { deltaDp ->
                                     scrollPanelHeightDp = (scrollPanelHeightDp - deltaDp).coerceIn(250f, 460f)
                                 },
@@ -408,7 +351,65 @@ fun KeyboardRoot(
                                 },
                                 onBackspaceRepeat = onBackspace,
                             )
-                        }
+                        } else {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                ToolbarRow(
+                                    panelMode = panelMode,
+                                    canResize = canResizePanel,
+                                    isExpanded = canResizePanel && scrollPanelHeightDp > 300f,
+                                    onResizeDeltaDp = { deltaDp ->
+                                        scrollPanelHeightDp = (scrollPanelHeightDp - deltaDp).coerceIn(250f, 460f)
+                                    },
+                                    onToggleExpand = {
+                                        scrollPanelHeightDp = if (scrollPanelHeightDp > 300f) 250f else 420f
+                                    },
+                                    onToggleEmoji = {
+                                        panelMode = PanelMode.EMOJI
+                                    },
+                                    onToggleClipboard = {
+                                        panelMode = if (panelMode == PanelMode.CLIPBOARD) PanelMode.KEYBOARD else PanelMode.CLIPBOARD
+                                    },
+                                    onToggleTodo = {
+                                        panelMode = if (panelMode == PanelMode.TODO) PanelMode.KEYBOARD else PanelMode.TODO
+                                    },
+                                    onOpenSettings = {
+                                        onKeyFeedback()
+                                        onOpenSettings()
+                                    },
+                                    suggestions = suggestions,
+                                    onSelectSuggestion = onSelectSuggestion,
+                                    onBlockSuggestion = onBlockSuggestion,
+                                    onUndo = onUndo,
+                                    onRedo = onRedo,
+                                )
+
+                                if (inputContext == InputContext.TERMINAL && panelMode == PanelMode.KEYBOARD) {
+                                    TerminalQuickBar(
+                                        ctrlActive = ctrlActive,
+                                        onToggleCtrl = {
+                                            onKeyFeedback()
+                                            ctrlActive = !ctrlActive
+                                        },
+                                        onSendKey = { keyCode ->
+                                            onKeyFeedback()
+                                            onSendKeyEvent(keyCode)
+                                        },
+                                        onCommitText = { text ->
+                                            onKeyFeedback()
+                                            onCommitText(text)
+                                        },
+                                    )
+                                }
+
+                                AnimatedContent(
+                                    targetState = panelMode,
+                                    transitionSpec = {
+                                        fadeIn(animationSpec = tween(140))
+                                            .togetherWith(fadeOut(animationSpec = tween(100)))
+                                    },
+                                    label = "panelModeTransition",
+                                ) { currentPanelMode ->
+                                    when (currentPanelMode) {
                         PanelMode.CLIPBOARD -> {
                             ClipboardPanel(
                                 panelHeightDp = if (canResizePanel) scrollPanelHeightDp else 250f,
@@ -555,8 +556,12 @@ fun KeyboardRoot(
                                 onMoveCursorVertical = onMoveCursorVertical,
                             )
                         }
+                        else -> Unit
                     }
                 }
+            }
+        }
+    }
             }
         }
     }
@@ -1613,6 +1618,7 @@ private fun EmojiAndKaomojiPanel(
     kaomojiItems: List<KaomojiItem>,
     favoriteItems: Set<String>,
     recentEmojis: List<String>,
+    emojiGridState: androidx.compose.foundation.lazy.grid.LazyGridState,
     onResizeDeltaDp: (Float) -> Unit,
     onBackToKeyboard: () -> Unit,
     onToggleFavorite: (String) -> Unit,
@@ -1637,7 +1643,6 @@ private fun EmojiAndKaomojiPanel(
         listOf(EmojiSection(category = "Recent", emojis = recentList)) + emojiSections
     }
 
-    val emojiGridState = rememberLazyGridState()
     val categoryScrollState = rememberScrollState()
 
     // Section start indices in the grid: 1 header item + N emojis per section
@@ -1737,7 +1742,9 @@ private fun EmojiAndKaomojiPanel(
                 Row(
                     modifier = Modifier
                         .weight(1f)
-                        .horizontalScroll(categoryScrollState),
+                        .height(44.dp)
+                        .horizontalScroll(categoryScrollState)
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
@@ -1755,12 +1762,12 @@ private fun EmojiAndKaomojiPanel(
                                 label = "catFgAnim",
                             )
                             val catScale by animateFloatAsState(
-                                targetValue = if (active) 1.08f else 1.0f,
+                                targetValue = if (active) 1.0f else 0.90f,
                                 label = "catScaleAnim",
                             )
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(34.dp)
                                     .graphicsLayer {
                                         scaleX = catScale
                                         scaleY = catScale
@@ -1778,7 +1785,7 @@ private fun EmojiAndKaomojiPanel(
                                     imageVector = emojiCategoryIconFor(section.category),
                                     contentDescription = section.category,
                                     tint = catFg,
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(19.dp),
                                 )
                             }
                         }
@@ -1796,12 +1803,12 @@ private fun EmojiAndKaomojiPanel(
                                 label = "kaomojiCatFgAnim",
                             )
                             val catScale by animateFloatAsState(
-                                targetValue = if (active) 1.08f else 1.0f,
+                                targetValue = if (active) 1.0f else 0.90f,
                                 label = "kaomojiCatScaleAnim",
                             )
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(34.dp)
                                     .graphicsLayer {
                                         scaleX = catScale
                                         scaleY = catScale
@@ -1815,7 +1822,7 @@ private fun EmojiAndKaomojiPanel(
                                     imageVector = kaomojiCategoryIconFor(cat),
                                     contentDescription = cat,
                                     tint = catFg,
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(19.dp),
                                 )
                             }
                         }
@@ -2112,6 +2119,7 @@ private fun NativeEmojiGridContent(
             item(
                 key = "header_${section.category}",
                 span = { GridItemSpan(maxLineSpan) },
+                contentType = "emoji_header",
             ) {
                 Text(
                     text = section.category,
@@ -2124,6 +2132,7 @@ private fun NativeEmojiGridContent(
             items(
                 items = section.emojis,
                 key = { emoji -> "${section.category}_$emoji" },
+                contentType = { "emoji_cell" },
             ) { emoji ->
                 Box(
                     modifier = Modifier

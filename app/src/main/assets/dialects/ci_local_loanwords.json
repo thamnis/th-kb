@@ -1,0 +1,51 @@
+{
+  "id": "ci_local_loanwords",
+  "name": "Dioula & Baoulé Everyday Loanwords",
+  "category": "Regional Dialect",
+  "language": "fr",
+  "author": "th-kb Community",
+  "version": "1.0",
+  "description": "Widely shared Côte d'Ivoire greetings, courtesy expressions, and cultural loanwords.",
+  "words": {
+    "akwaba": 90000,
+    "Akwaba": 91000,
+    "sogoma": 84000,
+    "tile": 82000,
+    "woula": 81000,
+    "hérê": 83000,
+    "tôrô": 82000,
+    "baraka": 85000,
+    "bissimilai": 80000,
+    "alhamdoulilah": 86000,
+    "inchallah": 88000,
+    "kôrô": 86000,
+    "dôgô": 84000,
+    "tonton": 88000,
+    "tantie": 89000,
+    "nanan": 83000,
+    "n'da": 79000,
+    "môni": 80000,
+    "kabako": 82000,
+    "gnagami": 79000,
+    "wossô": 81000,
+    "kôkô": 83000,
+    "séké": 78000,
+    "kpakpa": 80000,
+    "gban": 82000,
+    "djam": 81000,
+    "kagnan": 78000
+  },
+  "bigrams": {
+    "a": { "ni": 980 },
+    "i": { "ni": 990 },
+    "ni": { "sogoma": 980, "ce": 980, "tilé": 960, "woula": 950, "baraka": 940 },
+    "tôrô": { "tê": 980 },
+    "hérê": { "bê": 970 },
+    "mon": { "kôrô": 970, "dôgô": 950 }
+  },
+  "trigrams": {
+    "a ni": { "sogoma": 990, "tilé": 970, "woula": 960 },
+    "i ni": { "ce": 990, "sogoma": 970, "baraka": 960 },
+    "hérê bê": { "sira": 980 }
+  }
+}

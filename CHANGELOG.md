@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0-alpha.1] - 2026-11-17
+
+### Added
+- **Modular Dialect & Jargon Store (`DialectPackManager` + Native Rust Overlay)**: Mix any number of regional dialects and specialized jargon packs alongside base French & English dictionaries (14 built-in packs: `Ivorian French & Nouchi`, `Dioula & Baoulé Everyday Loanwords`, `African Urban Dialects`, `West African Culinary & Street Food`, `Daily Conversation`, `Abréviations & SMS (FR)`, `English Abbreviations & Slang`, `Gaming & Streaming Slang`, `Computer Science & Tech`, `Medicine & Healthcare`, `Biology & Life Sciences`, `Finance, Banking & Mobile Money`, `Law & Administration`, `Engineering & Architecture`), plus custom `.json` file import and starter template export for community submissions.
+- **Consumer-Friendly Daylight Settings Redesign**: Clean off-white `#F5F6FA` canvas with pure white `#FFFFFF` grouped cards, emerald switches, everyday non-technical wording, and clickable **Author Rights & Licenses** articles opening a dedicated license & privacy reader.
+- **Website-First Release & Compliance Prep**: Added `NOTICE`, offline `PRIVACY.md`, Adaptive Launcher Icon (`ic_launcher` + `ic_launcher_round`), R8/ProGuard JNI keep rules, and [`docs/STORE_DISTRIBUTION.md`](docs/STORE_DISTRIBUTION.md).
+
+### Changed
+- **Simplified Settings Defaults**: Removed all technical/expert controls (autocomplete engine picker, standalone Ivorian toggle, custom ms delay sliders, and emoji grid column editor—fixed cleanly at 8 columns per row).
+
+### Fixed
+- **Emoji History Circle Clipping**: Fixed horizontal scroll viewport slicing off edges of the active `🕐` category circle by giving the category bar vertical/horizontal inner clearance (`44.dp`) and bounding active scale to `1.0f`.
+- **Alpha ↔ Emoji Switch Smoothness**: Eliminated transition stutter by unifying height between Keyboard+Toolbar and Emoji panel inside one `AnimatedContent`, removing texture `scaleIn` re-rasterization, hoisting `emojiGridState`, adding `contentType` keys, and pre-warming emoji/kaomoji assets on startup background thread.
+
 ## [0.5.0-alpha.3] - 2026-11-17
 
 ### Added

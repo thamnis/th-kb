@@ -85,6 +85,12 @@ class SuggestionEngine(private val context: Context? = null) {
     @Volatile
     private var pendingPersonalJson: String? = null
 
+    @Volatile
+    private var pendingDialectOverlayJson: String = ""
+
+    @Volatile
+    private var fallbackDialectIndex: IndexedFallbackModel? = null
+
     private fun readAssetOrEmpty(path: String): String {
         val ctx = context ?: return ""
         return runCatching {
@@ -102,6 +108,18 @@ class SuggestionEngine(private val context: Context? = null) {
         pendingPersonalJson = rawJson
         if (nativeReady) {
             NativeSuggestionBridge.nativeSyncPersonalDictionary(rawJson)
+        }
+    }
+
+    fun syncDialectOverlay(overlayJson: String) {
+        pendingDialectOverlayJson = overlayJson
+        fallbackDialectIndex = if (overlayJson.isBlank()) {
+            null
+        } else {
+            buildIndexedFallback("", parseDictionary(overlayJson))
+        }
+        if (nativeReady) {
+            NativeSuggestionBridge.nativeSyncDialects(overlayJson)
         }
     }
 
@@ -150,17 +168,20 @@ class SuggestionEngine(private val context: Context? = null) {
         val enJson = readAssetOrEmpty("dictionaries/en_common.json")
         val frTsv = readAssetOrEmpty("dictionaries/fr_words.txt")
         val frJson = readAssetOrEmpty("dictionaries/fr_common.json")
-        val frCiJson = readAssetOrEmpty("dictionaries/fr_ci_nouchi.json")
+        val initialOverlay = pendingDialectOverlayJson
         nativeReady = NativeSuggestionBridge.nativeInitDictionaries(
             enTsv = enTsv,
             enCommonJson = enJson,
             frTsv = frTsv,
             frCommonJson = frJson,
-            frCiJson = frCiJson,
+            initialOverlayJson = initialOverlay,
         )
         if (nativeReady) {
             pendingPersonalJson?.let { json ->
                 NativeSuggestionBridge.nativeSyncPersonalDictionary(json)
+            }
+            if (pendingDialectOverlayJson.isNotEmpty()) {
+                NativeSuggestionBridge.nativeSyncDialects(pendingDialectOverlayJson)
             }
         }
         return nativeReady
@@ -173,7 +194,7 @@ class SuggestionEngine(private val context: Context? = null) {
         }
     }
 
-    fun getActiveDictionary(layoutId: String, ivorianEnabled: Boolean): DictionaryModel {
+    fun getActiveDictionary(layoutId: String, ivorianEnabled: Boolean = false): DictionaryModel {
         val isFr = layoutId.contains("fr") || layoutId.contains("ci")
         val baseKey = if (isFr) "fr_common" else "en_common"
         val base = loadDictionary(baseKey)
@@ -184,12 +205,12 @@ class SuggestionEngine(private val context: Context? = null) {
         }
     }
 
-    private fun getFallbackIndex(layoutId: String, ivorianEnabled: Boolean): IndexedFallbackModel {
+    private fun getFallbackIndex(layoutId: String): IndexedFallbackModel {
         val isFr = layoutId.contains("fr") || layoutId.contains("ci")
-        val cacheKey = "${if (isFr) "fr" else "en"}_$ivorianEnabled"
+        val cacheKey = if (isFr) "fr" else "en"
         return indexedCache.getOrPut(cacheKey) {
             val tsv = readAssetOrEmpty(if (isFr) "dictionaries/fr_words.txt" else "dictionaries/en_words.txt")
-            val jsonModel = getActiveDictionary(layoutId, ivorianEnabled)
+            val jsonModel = getActiveDictionary(layoutId, ivorianEnabled = false)
             buildIndexedFallback(tsv, jsonModel)
         }
     }
@@ -243,8 +264,8 @@ class SuggestionEngine(private val context: Context? = null) {
                 return parseNativeCandidates(json)
             }
         }
-        val fallbackIdx = getFallbackIndex(layoutId, ivorianEnabled)
-        return queryIndexed(
+        val fallbackIdx = getFallbackIndex(layoutId)
+        val combined = queryIndexed(
             index = fallbackIdx,
             contextWords = contextWords,
             prefix = prefix,
@@ -252,7 +273,31 @@ class SuggestionEngine(private val context: Context? = null) {
             layoutId = layoutId,
             capitalizeHint = capitalizeHint,
             maxResults = maxResults,
+        ).toMutableList()
+
+        val overlayIdx = fallbackDialectIndex ?: return combined
+        val ovHits = queryIndexed(
+            index = overlayIdx,
+            contextWords = contextWords,
+            prefix = prefix,
+            mode = mode,
+            layoutId = layoutId,
+            capitalizeHint = capitalizeHint,
+            maxResults = maxResults,
         )
+        for (hit in ovHits) {
+            val existingIdx = combined.indexOfFirst { it.word.equals(hit.word, ignoreCase = true) }
+            if (existingIdx >= 0) {
+                val prev = combined[existingIdx]
+                combined[existingIdx] = prev.copy(
+                    confidence = maxOf(prev.confidence, hit.confidence),
+                    isExact = prev.isExact || hit.isExact,
+                )
+            } else {
+                combined.add(hit)
+            }
+        }
+        return combined.sortedByDescending { it.confidence }.take(maxResults)
     }
 
     /**

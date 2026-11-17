@@ -1,0 +1,50 @@
+{
+  "id": "culinary_west_africa",
+  "name": "West African Culinary & Street Food",
+  "category": "Regional Dialect",
+  "language": "fr",
+  "author": "th-kb Community",
+  "version": "1.0",
+  "description": "Dishes, sauces, drinks, and beloved West African culinary terms.",
+  "words": {
+    "attiéké": 92000,
+    "alloco": 92000,
+    "garba": 91000,
+    "kedjenou": 88000,
+    "foutou": 90000,
+    "placali": 88000,
+    "kabato": 82000,
+    "tchep": 89000,
+    "thiéboudienne": 85000,
+    "mafé": 86000,
+    "yassa": 86000,
+    "choukouya": 89000,
+    "kankankan": 84000,
+    "bissap": 90000,
+    "gnamakoudji": 87000,
+    "dégué": 88000,
+    "bandji": 82000,
+    "klako": 82000,
+    "gombo": 87000,
+    "kplala": 82000,
+    "pistache": 86000,
+    "aubergine": 85000,
+    "djoumblé": 83000,
+    "gbofloto": 86000,
+    "claclo": 83000,
+    "akassa": 82000,
+    "dabali": 87000
+  },
+  "bigrams": {
+    "foutou": { "banane": 990, "igname": 970 },
+    "sauce": { "graine": 990, "arachide": 980, "gombo": 980, "pistache": 970, "claire": 970 },
+    "poulet": { "braisé": 990, "kedjenou": 960, "yassa": 970 },
+    "poisson": { "braisé": 990, "fumé": 970 },
+    "jus": { "de": 980 }
+  },
+  "trigrams": {
+    "jus de": { "bissap": 990, "gingembre": 980, "gnamakoudji": 970 },
+    "attiéké poisson": { "braisé": 990 },
+    "placali sauce": { "gombo": 990, "graine": 970 }
+  }
+}

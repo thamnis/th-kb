@@ -1,7 +1,9 @@
 package com.thamnis.thkb.engine
 
+import com.thamnis.thkb.data.DialectPackManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -216,5 +218,43 @@ class SuggestionEngineTest {
         assertEquals(1, unknownStrip.size)
         assertEquals("Thamnis", unknownStrip[0].word)
         assertEquals(true, unknownStrip[0].isLiteral)
+    }
+
+    @Test
+    fun dialectPackTemplateParsesAndOverlayMerges() {
+        val templateJson = DialectPackManager.createStarterTemplate()
+        val parsed = DialectPackManager.parsePack(templateJson, isBuiltIn = false)
+        assertNotNull(parsed)
+        assertEquals("My Local Jargon", parsed?.name)
+        assertEquals(2, parsed?.wordCount)
+
+        val engine = SuggestionEngine(null)
+        engine.syncDialectOverlay(templateJson)
+        val hits = engine.suggestForInput(
+            layoutId = "qwerty_en",
+            contextWords = emptyList(),
+            prefix = "exampl",
+            mode = "advanced_autocomplete",
+            ivorianEnabled = false,
+            capitalizeHint = false,
+            maxResults = 3,
+        )
+        assertFalse(hits.isEmpty())
+        assertEquals("exampleword", hits[0].word)
+    }
+
+    @Test
+    fun bundledDialectAssetsParseCleanly() {
+        val dir = java.io.File("src/main/assets/dialects").takeIf { it.isDirectory }
+            ?: java.io.File("app/src/main/assets/dialects")
+        val files = dir.listFiles { file -> file.extension == "json" }?.sortedBy { it.name }.orEmpty()
+        assertEquals(14, files.size)
+        val seenIds = mutableSetOf<String>()
+        files.forEach { file ->
+            val parsed = DialectPackManager.parsePack(file.readText(), isBuiltIn = true)
+            assertNotNull("Failed to parse ${file.name}", parsed)
+            assertFalse("Empty word list in ${file.name}", parsed!!.wordCount == 0)
+            assertFalse("Duplicate id ${parsed.id}", !seenIds.add(parsed.id))
+        }
     }
 }

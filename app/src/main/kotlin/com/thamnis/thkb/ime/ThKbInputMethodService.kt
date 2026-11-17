@@ -33,6 +33,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.thamnis.thkb.data.AssetRepository
 import com.thamnis.thkb.data.ClipboardHistoryManager
+import com.thamnis.thkb.data.DialectPackManager
 import com.thamnis.thkb.data.PersonalDictionaryManager
 import com.thamnis.thkb.data.TodoListManager
 import com.thamnis.thkb.engine.SuggestionCandidate
@@ -63,6 +64,7 @@ class ThKbInputMethodService :
     private lateinit var clipboardHistory: ClipboardHistoryManager
     private lateinit var todoManager: TodoListManager
     private lateinit var personalDictionary: PersonalDictionaryManager
+    private lateinit var dialectManager: DialectPackManager
     private data class PendingReplacement(
         val originalPrefix: String,
         val replacedText: String,
@@ -91,9 +93,15 @@ class ThKbInputMethodService :
         clipboardHistory = ClipboardHistoryManager(this)
         todoManager = TodoListManager(this)
         personalDictionary = PersonalDictionaryManager(this)
+        dialectManager = DialectPackManager(this)
         suggestionEngine = SuggestionEngine(this)
         suggestionEngine.syncPersonalDictionary(personalDictionary.state.value, personalDictionary.toJson())
-        Thread { suggestionEngine.warmUpAsync() }.start()
+        suggestionEngine.syncDialectOverlay(dialectManager.buildMergedOverlayJson())
+        Thread {
+            suggestionEngine.warmUpAsync()
+            assets.loadEmojiSections()
+            assets.loadKaomoji()
+        }.start()
         audioManager = getSystemService(AUDIO_SERVICE) as? AudioManager
     }
 
@@ -122,12 +130,19 @@ class ThKbInputMethodService :
                 val clipboardEntries by clipboardHistory.entries.collectAsState()
                 val todoTasks by todoManager.tasks.collectAsState()
                 val personalState by personalDictionary.state.collectAsState()
+                val dialectState by dialectManager.state.collectAsState()
                 val effectiveLayoutId = subtypeLayoutOverride ?: settings.layoutId
 
                 LaunchedEffect(personalState) {
                     suggestionEngine.syncPersonalDictionary(
                         personalState,
                         personalDictionary.toJson(personalState),
+                    )
+                }
+
+                LaunchedEffect(dialectState) {
+                    suggestionEngine.syncDialectOverlay(
+                        dialectManager.buildMergedOverlayJson(dialectState),
                     )
                 }
 
@@ -140,11 +155,11 @@ class ThKbInputMethodService :
                         autoCapPref = settings.autoCapOnOpen,
                     ),
                     showKeyPreview = settings.showKeyPreview,
-                    longPressDelayMs = settings.longPressDelayMs,
-                    rapidDeleteDelayMs = settings.rapidDeleteDelayMs,
+                    longPressDelayMs = KbSettings.DEFAULT_LONG_PRESS_DELAY_MS,
+                    rapidDeleteDelayMs = KbSettings.DEFAULT_RAPID_DELETE_DELAY_MS,
                     deleteGesturesEnabled = settings.deleteGesturesEnabled,
                     resetForwardDeleteOnChar = settings.resetForwardDeleteOnChar,
-                    emojiGridColumns = settings.emojiGridColumns,
+                    emojiGridColumns = KbSettings.DEFAULT_EMOJI_GRID_COLUMNS,
                     returnAction = returnAction,
                     assets = assets,
                     clipboardEntries = clipboardEntries,
@@ -360,7 +375,7 @@ class ThKbInputMethodService :
         effectiveLayoutId: String,
         settings: KbSettings,
     ): Boolean {
-        if (isRawInput || !settings.suggestionsEnabled || settings.autocompleteMode == KbSettings.AUTOCOMPLETE_MODE_OFF) {
+        if (isRawInput || !settings.suggestionsEnabled) {
             return false
         }
         if (inputContext == InputContext.PASSWORD || inputContext == InputContext.TERMINAL || inputContext == InputContext.NUMBER) {
@@ -377,8 +392,8 @@ class ThKbInputMethodService :
             layoutId = effectiveLayoutId,
             contextWords = ctxWords,
             prefix = prefix,
-            mode = settings.autocompleteMode,
-            ivorianEnabled = settings.ivorianFrenchEnabled,
+            mode = KbSettings.AUTOCOMPLETE_MODE_ADVANCED,
+            ivorianEnabled = false,
             capitalizeHint = capHint,
         ) ?: return false
 
@@ -400,7 +415,7 @@ class ThKbInputMethodService :
     }
 
     private fun refreshSuggestions(effectiveLayoutId: String, settings: KbSettings) {
-        if (!settings.suggestionsEnabled || settings.autocompleteMode == KbSettings.AUTOCOMPLETE_MODE_OFF) {
+        if (!settings.suggestionsEnabled) {
             if (suggestions.isNotEmpty()) suggestions = emptyList()
             return
         }
@@ -419,8 +434,8 @@ class ThKbInputMethodService :
             layoutId = effectiveLayoutId,
             contextWords = ctxWords,
             prefix = prefix,
-            mode = settings.autocompleteMode,
-            ivorianEnabled = settings.ivorianFrenchEnabled,
+            mode = KbSettings.AUTOCOMPLETE_MODE_ADVANCED,
+            ivorianEnabled = false,
             capitalizeHint = capHint,
             maxResults = 3,
         )
@@ -459,6 +474,7 @@ class ThKbInputMethodService :
     override fun onDestroy() {
         clipboardHistory.destroy()
         personalDictionary.destroy()
+        dialectManager.destroy()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         viewModelStore.clear()

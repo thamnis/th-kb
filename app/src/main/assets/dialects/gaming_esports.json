@@ -1,0 +1,53 @@
+{
+  "id": "gaming_esports",
+  "name": "Gaming & Streaming Slang",
+  "category": "Conversation",
+  "language": "all",
+  "author": "th-kb Community",
+  "version": "1.0",
+  "description": "Fast team callouts, esports terms, and streaming chat expressions.",
+  "words": {
+    "gg": 94000,
+    "wp": 90000,
+    "ggwp": 89000,
+    "glhf": 86000,
+    "afk": 91000,
+    "brb": 90000,
+    "nerf": 87000,
+    "buff": 87000,
+    "op": 88000,
+    "clutch": 86000,
+    "respawn": 85000,
+    "cooldown": 85000,
+    "hitbox": 82000,
+    "ping": 89000,
+    "fps": 90000,
+    "lag": 91000,
+    "smurf": 81000,
+    "tryhard": 83000,
+    "ranked": 87000,
+    "lobby": 88000,
+    "squad": 89000,
+    "loot": 87000,
+    "boss": 88000,
+    "streamer": 86000,
+    "speedrun": 83000,
+    "noob": 84000,
+    "carry": 86000,
+    "gank": 81000,
+    "rush": 85000,
+    "campeur": 82000
+  },
+  "bigrams": {
+    "good": { "game": 990, "luck": 970 },
+    "well": { "played": 990 },
+    "nice": { "try": 980, "shot": 970 },
+    "one": { "shot": 980, "hp": 960 },
+    "let's": { "push": 970, "rush": 960 }
+  },
+  "trigrams": {
+    "good luck have": { "fun": 990 },
+    "on fait": { "une": 960 },
+    "on lance": { "la": 970 }
+  }
+}

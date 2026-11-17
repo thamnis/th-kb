@@ -61,6 +61,7 @@ class AssetRepository(private val context: Context) {
         }
     }
 
+    @Synchronized
     fun loadKaomoji(): List<KaomojiItem> {
         kaomojiCache?.let { return it }
         val jsonText = context.assets.open("kaomoji/kaomoji.json").bufferedReader().use { it.readText() }
@@ -85,6 +86,7 @@ class AssetRepository(private val context: Context) {
         return items
     }
 
+    @Synchronized
     fun loadEmojiSections(): List<EmojiSection> {
         emojiSectionsCache?.let { return it }
         val jsonText = context.assets.open("kaomoji/emojis.json").bufferedReader().use { it.readText() }

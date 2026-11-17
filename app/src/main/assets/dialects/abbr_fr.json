@@ -1,0 +1,51 @@
+{
+  "id": "abbr_fr",
+  "name": "Abréviations & SMS (FR)",
+  "category": "Abbreviations",
+  "language": "fr",
+  "author": "th-kb Community",
+  "version": "1.0",
+  "description": "Raccourcis clavier courants et abréviations de messagerie en français.",
+  "words": {
+    "mdr": 96000,
+    "ptdr": 91000,
+    "tkt": 96000,
+    "svp": 94000,
+    "stp": 95000,
+    "rdv": 94000,
+    "bcp": 92000,
+    "qqn": 89000,
+    "qqch": 88000,
+    "dsl": 93000,
+    "ajd": 91000,
+    "pcq": 89000,
+    "pq": 88000,
+    "pk": 90000,
+    "jsuis": 91000,
+    "jpp": 90000,
+    "tktp": 84000,
+    "cc": 93000,
+    "bjr": 92000,
+    "bsr": 90000,
+    "slt": 92000,
+    "mrc": 90000,
+    "cv": 91000,
+    "oklm": 88000,
+    "bref": 90000,
+    "jsp": 93000,
+    "jtm": 91000,
+    "cad": 86000,
+    "ras": 88000,
+    "tfq": 90000,
+    "tqt": 87000
+  },
+  "bigrams": {
+    "tkt": { "pas": 970, "frère": 910, "mon": 900 },
+    "dsl": { "pour": 960, "mon": 910 },
+    "slt": { "cv": 960, "toi": 930 },
+    "cc": { "cv": 960 }
+  },
+  "trigrams": {
+    "tkt pas": { "frère": 940 }
+  }
+}

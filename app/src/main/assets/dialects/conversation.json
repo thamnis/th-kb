@@ -1,0 +1,42 @@
+{
+  "id": "conversation",
+  "name": "Daily Conversation Pack",
+  "category": "Conversation",
+  "language": "all",
+  "author": "th-kb Community",
+  "version": "1.0",
+  "description": "Natural conversational fillers, polite replies, and everyday bilingual phrases.",
+  "words": {
+    "carrément": 89000,
+    "exactement": 91000,
+    "franchement": 90000,
+    "tranquille": 92000,
+    "super": 94000,
+    "impeccable": 88000,
+    "nickel": 91000,
+    "entendu": 89000,
+    "formidable": 85000,
+    "definitely": 91000,
+    "absolutely": 92000,
+    "awesome": 93000,
+    "appreciate": 90000,
+    "wonderful": 86000,
+    "understandable": 84000
+  },
+  "bigrams": {
+    "no": { "worries": 990, "problem": 980 },
+    "sounds": { "great": 990, "good": 980, "fair": 920 },
+    "take": { "care": 990 },
+    "pas": { "souci": 970, "grave": 980 },
+    "bon": { "courage": 990, "appétit": 980, "repos": 940 },
+    "avec": { "plaisir": 990 },
+    "bien": { "sûr": 990, "entendu": 970, "reçu": 950 },
+    "à": { "bientôt": 990, "tout": 970, "demain": 980 }
+  },
+  "trigrams": {
+    "avec grand": { "plaisir": 990 },
+    "je t'en": { "prie": 990 },
+    "no problem at": { "all": 990 },
+    "have a wonderful": { "day": 990 }
+  }
+}

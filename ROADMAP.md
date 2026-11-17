@@ -50,6 +50,14 @@
 - [x] **3-Candidate Suggestion Strip & Auto-Replacement**: Dynamic strip with quoted `"literal"` slot, centered `#1` recommendation, space/punctuation auto-replace, and one-tap **Cancel-on-Delete (`⌫`)**
 - [x] **On-Device Personal Dictionary & Adaptive Learning**: Local word/bigram learning, long-press suggestion blacklist, and Settings word management UI
 
+## `v0.6` — UI/UX Stabilization, Modular Dialect Store & Distribution
+
+- [x] **Consumer-Friendly Daylight Settings Redesign**: Modern `#F5F6FA` canvas + `#FFFFFF` grouped cards with zero technical settings/jargon, fixed 8 emoji columns, fixed smooth touch delays, and clickable Author Rights & Licenses reader
+- [x] **Modular Dialect & Jargon Pack Store (`DialectPackManager`)**: Support installing, mixing, importing, and authoring custom `.json` jargon packs alongside base French & English (14 built-in packs covering Regional Dialects, Abbreviations, Conversation, Gaming, Tech/CS, Medicine, Biology, Finance/Mobile Money, Law, and Engineering)
+- [x] **Emoji Panel Polish & Zero-Lag Transitions**: Fixed clipped history clock pill circle inside scrollable category bar; eliminated height jitter and scaling jank on Alpha ↔ Emoji switching
+- [x] **Author Rights, Third-Party Licenses & Website Distribution Prep**: Added `NOTICE`, offline `PRIVACY.md`, Adaptive Launcher Icon (`ic_launcher`), ProGuard R8 JNI rules, and website-first plan ([`docs/STORE_DISTRIBUTION.md`](docs/STORE_DISTRIBUTION.md))
+- [ ] **Website Release & Online Community Dialect Hub**: Sign website release APK (`v1.0.0`), launch web directory for community-submitted JSON dialect packs, and optionally prepare F-Droid / Google Play listings later
+
 ## `v1.0` — Public Release
 
 - [ ] Daily-driver stability, touch latency tuning, and `v0.x` bug fixes

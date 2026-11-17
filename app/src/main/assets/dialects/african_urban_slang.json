@@ -1,0 +1,48 @@
+{
+  "id": "african_urban_slang",
+  "name": "African Urban Dialects",
+  "category": "Regional Dialect",
+  "language": "all",
+  "author": "th-kb Community",
+  "version": "1.0",
+  "description": "Popular pan-African urban terms from Camfranglais, Wolof-Français, Lingala-Français, and Sheng.",
+  "words": {
+    "ndem": 84000,
+    "kongossa": 85000,
+    "mboka": 83000,
+    "wahala": 89000,
+    "teranga": 86000,
+    "nangadef": 85000,
+    "mbindi": 80000,
+    "tchop": 84000,
+    "nyama": 82000,
+    "boma": 81000,
+    "sawa": 87000,
+    "poa": 85000,
+    "fiti": 82000,
+    "jamaa": 83000,
+    "mbote": 86000,
+    "malamu": 85000,
+    "jamm": 84000,
+    "rek": 82000,
+    "wayé": 80000,
+    "chiller": 84000,
+    "gérer": 86000,
+    "moulah": 82000,
+    "dosage": 81000,
+    "wanda": 83000
+  },
+  "bigrams": {
+    "no": { "wahala": 980 },
+    "ça": { "tchop": 950, "wanda": 940 },
+    "nanga": { "def": 990 },
+    "jamm": { "rek": 980 },
+    "mambo": { "vipi": 990, "poa": 970 },
+    "niko": { "sawa": 980, "fiti": 960 }
+  },
+  "trigrams": {
+    "no wahala": { "bro": 960 },
+    "on gère": { "le": 950 },
+    "jamm rek": { "inchallah": 960 }
+  }
+}

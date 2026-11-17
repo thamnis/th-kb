@@ -713,7 +713,7 @@ pub fn get_suggestions_from_json(
 struct EngineCache {
     en: Option<SuggestionIndex>,
     fr: Option<SuggestionIndex>,
-    fr_ci: Option<SuggestionIndex>,
+    dialect_overlay: Option<SuggestionIndex>,
     personal: PersonalModel,
 }
 
@@ -721,6 +721,60 @@ static GLOBAL_ENGINE: OnceLock<Mutex<EngineCache>> = OnceLock::new();
 
 fn engine_mutex() -> &'static Mutex<EngineCache> {
     GLOBAL_ENGINE.get_or_init(|| Mutex::new(EngineCache::default()))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn query_with_dialect_overlay(
+    base: &SuggestionIndex,
+    overlay: Option<&SuggestionIndex>,
+    context_words: &[String],
+    prefix: &str,
+    mode: &str,
+    layout_id: &str,
+    capitalize_hint: bool,
+    max_results: usize,
+    personal: Option<&PersonalModel>,
+) -> Vec<SuggestionCandidate> {
+    let mut combined = base.query_with_personal(
+        context_words,
+        prefix,
+        mode,
+        layout_id,
+        capitalize_hint,
+        max_results,
+        personal,
+    );
+    if let Some(ov) = overlay {
+        let ov_hits = ov.query_with_personal(
+            context_words,
+            prefix,
+            mode,
+            layout_id,
+            capitalize_hint,
+            max_results,
+            personal,
+        );
+        for hit in ov_hits {
+            if let Some(existing) = combined
+                .iter_mut()
+                .find(|c| c.word.eq_ignore_ascii_case(&hit.word))
+            {
+                if hit.confidence > existing.confidence {
+                    existing.confidence = hit.confidence;
+                }
+                existing.is_exact = existing.is_exact || hit.is_exact;
+            } else {
+                combined.push(hit);
+            }
+        }
+        combined.sort_by(|a, b| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        combined.truncate(max_results);
+    }
+    combined
 }
 
 #[no_mangle]
@@ -731,7 +785,7 @@ pub extern "system" fn Java_com_thamnis_thkb_engine_NativeSuggestionBridge_nativ
     en_common_json: jni::objects::JString,
     fr_tsv: jni::objects::JString,
     fr_common_json: jni::objects::JString,
-    fr_ci_json: jni::objects::JString,
+    initial_overlay_json: jni::objects::JString,
 ) -> jni::sys::jboolean {
     let read_str = |env: &mut jni::JNIEnv, s: jni::objects::JString| -> String {
         env.get_string(&s)
@@ -743,16 +797,45 @@ pub extern "system" fn Java_com_thamnis_thkb_engine_NativeSuggestionBridge_nativ
     let en_json_s = read_str(&mut env, en_common_json);
     let fr_tsv_s = read_str(&mut env, fr_tsv);
     let fr_json_s = read_str(&mut env, fr_common_json);
-    let fr_ci_s = read_str(&mut env, fr_ci_json);
+    let overlay_s = read_str(&mut env, initial_overlay_json);
 
     let en_idx = SuggestionIndex::build(&en_tsv_s, &[&en_json_s]);
     let fr_idx = SuggestionIndex::build(&fr_tsv_s, &[&fr_json_s]);
-    let fr_ci_idx = SuggestionIndex::build(&fr_tsv_s, &[&fr_json_s, &fr_ci_s]);
+    let ov_idx = if overlay_s.trim().is_empty() {
+        None
+    } else {
+        Some(SuggestionIndex::build("", &[&overlay_s]))
+    };
 
     if let Ok(mut guard) = engine_mutex().lock() {
         guard.en = Some(en_idx);
         guard.fr = Some(fr_idx);
-        guard.fr_ci = Some(fr_ci_idx);
+        guard.dialect_overlay = ov_idx;
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_thamnis_thkb_engine_NativeSuggestionBridge_nativeSyncDialects(
+    mut env: jni::JNIEnv,
+    _class: jni::objects::JClass,
+    overlay_json: jni::objects::JString,
+) -> jni::sys::jboolean {
+    let overlay_s: String = env
+        .get_string(&overlay_json)
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    let ov_idx = if overlay_s.trim().is_empty() {
+        None
+    } else {
+        Some(SuggestionIndex::build("", &[&overlay_s]))
+    };
+
+    if let Ok(mut guard) = engine_mutex().lock() {
+        guard.dialect_overlay = ov_idx;
         1
     } else {
         0
@@ -768,7 +851,7 @@ pub extern "system" fn Java_com_thamnis_thkb_engine_NativeSuggestionBridge_nativ
     context_joined: jni::objects::JString,
     prefix: jni::objects::JString,
     mode: jni::objects::JString,
-    ivorian_enabled: jni::sys::jboolean,
+    _ivorian_enabled: jni::sys::jboolean,
     capitalize_hint: jni::sys::jboolean,
     max_results: jni::sys::jint,
 ) -> jni::sys::jstring {
@@ -796,19 +879,18 @@ pub extern "system" fn Java_com_thamnis_thkb_engine_NativeSuggestionBridge_nativ
         .collect();
 
     let is_fr = layout_s.contains("fr") || layout_s.contains("ci");
-    let use_ci = is_fr && ivorian_enabled != 0;
 
     let candidates = if let Ok(guard) = engine_mutex().lock() {
-        let index_opt = if use_ci {
-            guard.fr_ci.as_ref().or(guard.fr.as_ref())
-        } else if is_fr {
+        let index_opt = if is_fr {
             guard.fr.as_ref()
         } else {
             guard.en.as_ref()
         };
         index_opt
             .map(|idx| {
-                idx.query_with_personal(
+                query_with_dialect_overlay(
+                    idx,
+                    guard.dialect_overlay.as_ref(),
                     &context_words,
                     &prefix_s,
                     &mode_s,
@@ -1027,5 +1109,43 @@ mod tests {
             Some(&personal),
         );
         assert!(after_block.iter().all(|c| c.word != "bonjour"));
+    }
+
+    #[test]
+    fn dialect_overlay_merges_multiple_jargons() {
+        let base = sample_index();
+        let cs_and_med = r#"{
+            "words": { "kubernetes": 85000, "ordonnance": 88000 },
+            "bigrams": { "pull": { "request": 990 } }
+        }"#;
+        let overlay = SuggestionIndex::build("", &[cs_and_med]);
+
+        let hits = query_with_dialect_overlay(
+            &base,
+            Some(&overlay),
+            &[],
+            "kuber",
+            "advanced_autocomplete",
+            "qwerty_en",
+            false,
+            3,
+            None,
+        );
+        assert!(!hits.is_empty());
+        assert_eq!(hits[0].word, "kubernetes");
+
+        let next_hits = query_with_dialect_overlay(
+            &base,
+            Some(&overlay),
+            &["pull".to_string()],
+            "",
+            "advanced_autocomplete",
+            "qwerty_en",
+            false,
+            3,
+            None,
+        );
+        assert!(!next_hits.is_empty());
+        assert_eq!(next_hits[0].word, "request");
     }
 }
