@@ -10,6 +10,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -35,19 +38,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.thamnis.thkb.data.ClipboardHistoryManager
+import com.thamnis.thkb.data.PersonalDictionaryManager
 import com.thamnis.thkb.data.TodoListManager
 
 class SettingsActivity : ComponentActivity() {
+    @OptIn(ExperimentalLayoutApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val preferences = KbPreferences(this)
         val clipboardHistory = ClipboardHistoryManager(this)
         val todoManager = TodoListManager(this)
+        val personalDictionary = PersonalDictionaryManager(this)
 
         setContent {
             val settings by preferences.settings.collectAsState()
             val clips by clipboardHistory.entries.collectAsState()
             val tasks by todoManager.tasks.collectAsState()
+            val personalState by personalDictionary.state.collectAsState()
+            var newCustomWord by remember { mutableStateOf("") }
             var testText by remember { mutableStateOf("") }
             var backupStatus by remember { mutableStateOf<String?>(null) }
 
@@ -213,6 +221,90 @@ class SettingsActivity : ComponentActivity() {
                                 checked = settings.ivorianFrenchEnabled,
                                 onCheckedChange = { preferences.setIvorianFrenchEnabled(it) },
                             )
+
+                            HorizontalDivider()
+
+                            Text(
+                                text = "Personal Dictionary & Adaptive Learning",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+
+                            Text(
+                                text = "th-kb learns your frequently typed words and phrases locally. Long-press any suggestion on the bar to hide it.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                OutlinedTextField(
+                                    value = newCustomWord,
+                                    onValueChange = { newCustomWord = it },
+                                    label = { Text("Add custom word") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Button(
+                                    onClick = {
+                                        val clean = newCustomWord.trim()
+                                        if (clean.length >= 2) {
+                                            personalDictionary.addCustomWord(clean)
+                                            newCustomWord = ""
+                                        }
+                                    },
+                                ) {
+                                    Text("Add")
+                                }
+                            }
+
+                            if (personalState.words.isNotEmpty()) {
+                                Text(
+                                    text = "Learned & Custom Words (${personalState.words.size}) — tap to remove",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    personalState.words.entries
+                                        .sortedByDescending { it.value }
+                                        .take(24)
+                                        .forEach { (word, count) ->
+                                            InputChip(
+                                                selected = false,
+                                                onClick = { personalDictionary.removeWord(word) },
+                                                label = { Text("$word ($count) ×") },
+                                            )
+                                        }
+                                }
+                            }
+
+                            if (personalState.blocked.isNotEmpty()) {
+                                Text(
+                                    text = "Hidden Suggestions (${personalState.blocked.size}) — tap to restore",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    personalState.blocked.forEach { word ->
+                                        InputChip(
+                                            selected = false,
+                                            onClick = { personalDictionary.unblockWord(word) },
+                                            label = { Text("$word ↺") },
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (personalState.words.isNotEmpty() || personalState.blocked.isNotEmpty()) {
+                                OutlinedButton(
+                                    onClick = { personalDictionary.clearLearned() },
+                                ) {
+                                    Text("Clear Learned History")
+                                }
+                            }
                         }
 
                         HorizontalDivider()

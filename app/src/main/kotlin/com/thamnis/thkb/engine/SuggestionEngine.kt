@@ -1,6 +1,7 @@
 package com.thamnis.thkb.engine
 
 import android.content.Context
+import com.thamnis.thkb.data.PersonalDictionaryState
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -11,6 +12,7 @@ data class SuggestionCandidate(
     val word: String,
     val confidence: Double,
     val isExact: Boolean,
+    val isLiteral: Boolean = false,
 )
 
 enum class CasingStyle {
@@ -77,6 +79,12 @@ class SuggestionEngine(private val context: Context? = null) {
     @Volatile
     private var nativeReady = false
 
+    @Volatile
+    private var personalState = PersonalDictionaryState()
+
+    @Volatile
+    private var pendingPersonalJson: String? = null
+
     private fun readAssetOrEmpty(path: String): String {
         val ctx = context ?: return ""
         return runCatching {
@@ -87,6 +95,48 @@ class SuggestionEngine(private val context: Context? = null) {
     fun warmUpAsync() {
         if (context == null) return
         ensureNativeInitialized()
+    }
+
+    fun syncPersonalDictionary(state: PersonalDictionaryState, rawJson: String) {
+        personalState = state
+        pendingPersonalJson = rawJson
+        if (nativeReady) {
+            NativeSuggestionBridge.nativeSyncPersonalDictionary(rawJson)
+        }
+    }
+
+    fun learnWord(prevWord: String, word: String, weightBoost: Int = 2) {
+        val trimmed = word.trim()
+        if (trimmed.length < 2) return
+        val cur = personalState
+        val nextWords = cur.words.toMutableMap()
+        val key = nextWords.keys.firstOrNull { it.equals(trimmed, ignoreCase = true) } ?: trimmed
+        nextWords[key] = (nextWords[key] ?: 0) + weightBoost
+        val nextBigrams = cur.bigrams.mapValues { it.value.toMutableMap() }.toMutableMap()
+        val prevLower = prevWord.trim().lowercase(Locale.ROOT)
+        if (prevLower.isNotEmpty()) {
+            val inner = nextBigrams.getOrPut(prevLower) { mutableMapOf() }
+            inner[trimmed] = (inner[trimmed] ?: 0) + weightBoost
+        }
+        val nextBlocked = cur.blocked.toMutableSet().apply { remove(trimmed.lowercase(Locale.ROOT)) }
+        personalState = PersonalDictionaryState(nextWords, nextBigrams, nextBlocked)
+
+        if (nativeReady) {
+            NativeSuggestionBridge.nativeLearnWord(prevWord, trimmed, weightBoost)
+        }
+    }
+
+    fun blockWord(word: String) {
+        val lower = word.trim().lowercase(Locale.ROOT)
+        if (lower.isEmpty()) return
+        val cur = personalState
+        val nextWords = cur.words.filterKeys { it.lowercase(Locale.ROOT) != lower }
+        val nextBlocked = cur.blocked.toMutableSet().apply { add(lower) }
+        personalState = cur.copy(words = nextWords, blocked = nextBlocked)
+
+        if (nativeReady) {
+            NativeSuggestionBridge.nativeBlockWord(word)
+        }
     }
 
     @Synchronized
@@ -108,6 +158,11 @@ class SuggestionEngine(private val context: Context? = null) {
             frCommonJson = frJson,
             frCiJson = frCiJson,
         )
+        if (nativeReady) {
+            pendingPersonalJson?.let { json ->
+                NativeSuggestionBridge.nativeSyncPersonalDictionary(json)
+            }
+        }
         return nativeReady
     }
 
@@ -270,17 +325,47 @@ class SuggestionEngine(private val context: Context? = null) {
             return queryNextWord(index, contextWords, isAdvanced, casing, maxResults)
         }
 
+        val personal = personalState
+        fun isBlocked(w: String): Boolean = personal.blocked.contains(w.lowercase(Locale.ROOT))
+        fun personalWordBoost(w: String): Double {
+            val cnt = personal.words.entries
+                .firstOrNull { it.key.equals(w, ignoreCase = true) }
+                ?.value ?: return 0.0
+            return log10(cnt.toDouble() + 1.0) * 95.0
+        }
+
         val scored = mutableListOf<Triple<String, Double, Boolean>>()
         val seenIdx = HashSet<Int>()
+
+        // 0. Personal & custom learned words
+        for ((pWord, cnt) in personal.words) {
+            if (isBlocked(pWord)) continue
+            val pLower = pWord.lowercase(Locale.ROOT)
+            val pClean = stripAccents(pLower)
+            val boost = log10(cnt.toDouble() + 1.0) * 140.0
+            if (pClean == cleanPrefix) {
+                var score = 500.0 + boost
+                score += contextBoost(index, pLower, contextWords, isAdvanced)
+                scored.add(Triple(pWord, score, true))
+            } else if (pClean.startsWith(cleanPrefix)) {
+                val lenDiff = (pClean.length - cleanPrefix.length).coerceAtLeast(0)
+                var score = 460.0 + boost - lenDiff * 12.0
+                score += contextBoost(index, pLower, contextWords, isAdvanced)
+                scored.add(Triple(pWord, score, false))
+            }
+        }
 
         // 1. Exact clean match
         index.exactClean[cleanPrefix]?.forEach { idx ->
             if (seenIdx.add(idx)) {
                 val entry = index.entries[idx]
-                val isExactDiacritic = entry.lower == normLower
-                var score = entry.logFreq + if (isExactDiacritic) 320.0 else 260.0
-                score += contextBoost(index, entry.lower, contextWords, isAdvanced)
-                scored.add(Triple(entry.canonical, score, true))
+                if (!isBlocked(entry.canonical)) {
+                    val isExactDiacritic = entry.lower == normLower
+                    var score = entry.logFreq + if (isExactDiacritic) 320.0 else 260.0
+                    score += contextBoost(index, entry.lower, contextWords, isAdvanced)
+                    score += personalWordBoost(entry.canonical)
+                    scored.add(Triple(entry.canonical, score, true))
+                }
             }
         }
 
@@ -298,10 +383,12 @@ class SuggestionEngine(private val context: Context? = null) {
                 val entry = index.entries[idx]
                 if (entry.clean.startsWith(cleanPrefix)) {
                     seenIdx.add(idx)
+                    if (isBlocked(entry.canonical)) continue
                     val lenDiff = (entry.clean.length - cleanPrefix.length).coerceAtLeast(0)
                     val exactPrefix = entry.lower.startsWith(normLower)
                     var score = entry.logFreq + (if (exactPrefix) 180.0 else 140.0) - lenDiff * 14.0
                     score += contextBoost(index, entry.lower, contextWords, isAdvanced)
+                    score += personalWordBoost(entry.canonical)
                     scored.add(Triple(entry.canonical, score, false))
                     hits++
                     if (hits >= 60) break
@@ -323,12 +410,14 @@ class SuggestionEngine(private val context: Context? = null) {
                 for (idx in hitList) {
                     if (seenIdx.contains(idx)) continue
                     val entry = index.entries[idx]
+                    if (isBlocked(entry.canonical)) continue
                     if (abs(entry.clean.length - cleanPrefix.length) > 1) continue
                     val dist = spatialDamerauDistance(cleanPrefix, entry.clean, layoutId)
                     if (dist <= 1.15) {
                         seenIdx.add(idx)
                         var score = entry.logFreq + (1.2 - dist) * 190.0
                         score += contextBoost(index, entry.lower, contextWords, true)
+                        score += personalWordBoost(entry.canonical)
                         scored.add(Triple(entry.canonical, score, false))
                         checked++
                         if (checked >= 40) break
@@ -358,18 +447,26 @@ class SuggestionEngine(private val context: Context? = null) {
         casing: CasingStyle,
         maxResults: Int,
     ): List<SuggestionCandidate> {
+        val personal = personalState
+        fun isBlocked(w: String): Boolean = personal.blocked.contains(w.lowercase(Locale.ROOT))
         val nextCandidates = mutableListOf<Pair<String, Double>>()
 
         if (isAdvanced && contextWords.size >= 2) {
             val lastTwo = "${contextWords[contextWords.size - 2].lowercase(Locale.ROOT)} ${contextWords.last().lowercase(Locale.ROOT)}"
             index.trigrams[lastTwo]?.forEach { (w, s) ->
-                nextCandidates.add(w to s * 2.2)
+                if (!isBlocked(w)) nextCandidates.add(w to s * 2.2)
             }
         }
 
         contextWords.lastOrNull()?.lowercase(Locale.ROOT)?.let { prev ->
+            personal.bigrams[prev]?.forEach { (w, cnt) ->
+                if (!isBlocked(w)) {
+                    val s = log10(cnt.toDouble() + 1.0) * 180.0 + 480.0
+                    nextCandidates.add(w to s)
+                }
+            }
             index.bigrams[prev]?.forEach { (w, s) ->
-                if (nextCandidates.none { it.first == w }) {
+                if (!isBlocked(w) && nextCandidates.none { it.first.equals(w, ignoreCase = true) }) {
                     nextCandidates.add(w to s * 1.4)
                 }
             }
@@ -403,6 +500,11 @@ class SuggestionEngine(private val context: Context? = null) {
             index.trigrams[lastTwo]?.get(wordLower)?.let { boost += it * 1.5 }
         }
         contextWords.lastOrNull()?.lowercase(Locale.ROOT)?.let { prev ->
+            personalState.bigrams[prev]?.forEach { (pw, cnt) ->
+                if (pw.lowercase(Locale.ROOT) == wordLower) {
+                    boost += log10(cnt.toDouble() + 1.0) * 140.0 + 120.0
+                }
+            }
             index.bigrams[prev]?.get(wordLower)?.let { boost += it * 0.9 }
         }
         return boost
@@ -578,6 +680,47 @@ class SuggestionEngine(private val context: Context? = null) {
                 }
             }
             return dp[m][n]
+        }
+
+        /**
+         * Formats ranked candidates into Gboard's 3-slot strip order:
+         * - When typing a non-empty prefix that differs from #1, places the quoted literal prefix
+         *   on the left so users can tap to keep/learn custom words, with #1 centered.
+         * - Otherwise places #1 in the highlighted center slot: [2nd, 1st, 3rd].
+         */
+        fun formatStripCandidates(
+            prefix: String,
+            candidates: List<SuggestionCandidate>,
+        ): List<SuggestionCandidate> {
+            val trimmed = prefix.trim()
+            if (trimmed.isEmpty()) {
+                return if (candidates.size >= 3) {
+                    listOf(candidates[1], candidates[0], candidates[2])
+                } else {
+                    candidates
+                }
+            }
+
+            if (candidates.isEmpty()) {
+                return if (trimmed.length >= 2 && trimmed.all { it.isLetter() || it == '\'' || it == '-' }) {
+                    listOf(SuggestionCandidate(trimmed, 0.0, isExact = true, isLiteral = true))
+                } else {
+                    emptyList()
+                }
+            }
+
+            val top = candidates[0]
+            if (top.word == trimmed) {
+                return if (candidates.size >= 3) {
+                    listOf(candidates[1], candidates[0], candidates[2])
+                } else {
+                    candidates
+                }
+            }
+
+            val literal = SuggestionCandidate(trimmed, 0.0, isExact = true, isLiteral = true)
+            val altRight = candidates.drop(1).firstOrNull { !it.word.equals(trimmed, ignoreCase = false) }
+            return listOfNotNull(literal, top, altRight)
         }
 
         fun selectAutoReplacement(

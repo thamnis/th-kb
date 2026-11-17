@@ -1,140 +1,65 @@
 {
   "words": {
-    "bonjour": 1200,
-    "bon": 1150,
-    "bonne": 1100,
-    "merci": 1300,
-    "beaucoup": 1050,
-    "salut": 1000,
-    "comment": 1100,
-    "vas": 950,
-    "tu": 1400,
-    "je": 1600,
-    "suis": 1300,
-    "nous": 1100,
-    "vous": 1250,
-    "il": 1350,
-    "elle": 1200,
-    "ils": 1100,
-    "elles": 900,
-    "bien": 1250,
-    "très": 1150,
-    "oui": 1200,
-    "non": 1150,
-    "d'accord": 1000,
-    "pour": 1400,
-    "avec": 1300,
-    "dans": 1350,
-    "sur": 1250,
-    "faire": 1100,
-    "fait": 1050,
-    "tout": 1200,
-    "tous": 1050,
-    "toute": 950,
-    "avoir": 1100,
-    "être": 1250,
-    "est": 1500,
-    "sont": 1150,
-    "qui": 1250,
-    "que": 1400,
-    "quoi": 1000,
-    "pourquoi": 950,
-    "quand": 1000,
-    "où": 1100,
-    "ici": 1050,
-    "là": 1000,
-    "maintenant": 950,
-    "demain": 900,
-    "hier": 850,
-    "soir": 900,
-    "matin": 900,
-    "journée": 950,
-    "nuit": 850,
-    "temps": 1000,
-    "travail": 950,
-    "maison": 950,
-    "ami": 900,
-    "famille": 900,
-    "ensemble": 950,
-    "peut-être": 900,
-    "toujours": 950,
-    "jamais": 900,
-    "aussi": 1100,
-    "encore": 1000,
-    "vraiment": 950,
-    "super": 950,
-    "génial": 850,
-    "parfait": 900,
-    "plaît": 950,
-    "soirée": 900,
-    "arriver": 850,
-    "partir": 850,
-    "aller": 1000,
-    "venir": 950,
-    "voir": 950,
-    "savoir": 950,
-    "vouloir": 950,
-    "pouvoir": 1000
+    "bonjour": 120000,
+    "salut": 100000,
+    "merci": 130000,
+    "beaucoup": 105000,
+    "d'accord": 100000,
+    "peut-être": 90000,
+    "aujourd'hui": 98000,
+    "quelqu'un": 92000,
+    "quelque": 96000,
+    "toujours": 95000
   },
   "bigrams": {
-    "comment": {
-      "vas": 950,
-      "allez": 920,
-      "tu": 900
-    },
-    "merci": {
-      "beaucoup": 990,
-      "infiniment": 800
-    },
-    "bonne": {
-      "journée": 980,
-      "soirée": 960,
-      "nuit": 940
-    },
-    "je": {
-      "suis": 980,
-      "veux": 920,
-      "peux": 910,
-      "vais": 950
-    },
-    "s'il": {
-      "vous": 990,
-      "te": 950
-    },
-    "très": {
-      "bien": 980,
-      "bon": 920
-    },
-    "tout": {
-      "va": 960,
-      "est": 940,
-      "le": 950
-    },
-    "tu": {
-      "es": 970,
-      "vas": 960,
-      "peux": 910
-    }
+    "je": { "suis": 990, "vais": 970, "veux": 950, "peux": 940, "sais": 930, "pense": 920, "crois": 900, "t'aime": 890 },
+    "tu": { "es": 990, "vas": 970, "veux": 950, "peux": 940, "sais": 930, "as": 960, "fais": 910 },
+    "il": { "est": 990, "faut": 980, "y": 970, "a": 960, "va": 950, "peut": 930, "fait": 920 },
+    "elle": { "est": 990, "a": 970, "va": 950, "veut": 930, "fait": 920 },
+    "on": { "est": 990, "va": 980, "a": 970, "peut": 950, "fait": 940, "se": 930 },
+    "nous": { "sommes": 980, "avons": 970, "allons": 960, "pouvons": 940, "voulons": 920 },
+    "vous": { "êtes": 980, "avez": 970, "allez": 960, "pouvez": 950, "voulez": 940 },
+    "c'est": { "bien": 980, "vrai": 970, "bon": 960, "super": 950, "génial": 940, "quoi": 930, "normal": 910 },
+    "ce": { "n'est": 990, "soir": 970, "matin": 960, "qui": 950, "que": 940 },
+    "bonjour": { "comment": 970, "à": 950, "tout": 930, "mon": 920 },
+    "salut": { "ça": 980, "comment": 960, "mon": 940, "les": 920 },
+    "ça": { "va": 990, "marche": 960, "fait": 950, "dépend": 930, "roulera": 880 },
+    "comment": { "vas": 980, "ça": 970, "allez": 950, "tu": 940, "faire": 920 },
+    "merci": { "beaucoup": 990, "bien": 960, "infiniment": 920, "pour": 940, "à": 910 },
+    "bonne": { "journée": 990, "soirée": 970, "nuit": 960, "chance": 940, "idée": 930 },
+    "bon": { "jour": 950, "courage": 980, "appétit": 970, "week-end": 960, "soir": 930 },
+    "s'il": { "vous": 990, "te": 980 },
+    "très": { "bien": 990, "bon": 950, "content": 930, "important": 910, "vite": 920 },
+    "pas": { "mal": 980, "encore": 970, "possible": 960, "maintenant": 950, "grave": 940, "du": 930 },
+    "pour": { "le": 980, "la": 970, "faire": 960, "toi": 950, "vous": 940, "moi": 930 },
+    "avec": { "plaisir": 980, "moi": 960, "toi": 950, "vous": 940, "nous": 930 },
+    "dans": { "le": 980, "la": 970, "les": 960, "quelques": 940, "un": 930 },
+    "tout": { "le": 980, "va": 970, "est": 960, "de": 950, "à": 940 },
+    "à": { "demain": 980, "plus": 970, "tout": 960, "bientôt": 950, "la": 940 },
+    "de": { "rien": 980, "tout": 960, "retour": 940, "plus": 950 },
+    "y": { "a": 990, "en": 940 },
+    "en": { "fait": 980, "tout": 960, "ce": 950, "train": 940, "plus": 930 }
   },
   "trigrams": {
-    "s'il vous": {
-      "plaît": 990
-    },
-    "s'il te": {
-      "plaît": 990
-    },
-    "comment vas": {
-      "tu": 990
-    },
-    "comment allez": {
-      "vous": 990
-    },
-    "je vais": {
-      "bien": 970,
-      "arriver": 920
-    },
-    "tout va": {
-      "bien": 980
-    }
+    "s'il vous": { "plaît": 990 },
+    "s'il te": { "plaît": 990 },
+    "comment ça": { "va": 990 },
+    "comment vas": { "tu": 990 },
+    "comment allez": { "vous": 990 },
+    "je suis": { "là": 980, "prêt": 960, "désolé": 950, "content": 940, "fatigué": 920 },
+    "je vais": { "bien": 980, "voir": 960, "faire": 950, "arriver": 940 },
+    "je ne": { "sais": 990, "peux": 970, "veux": 960, "suis": 950 },
+    "ne sais": { "pas": 990 },
+    "il y": { "a": 990 },
+    "y a": { "pas": 980, "tous": 920 },
+    "il faut": { "que": 980, "faire": 950, "voir": 930 },
+    "tout va": { "bien": 990 },
+    "tout le": { "monde": 990, "temps": 960 },
+    "ce n'est": { "pas": 990, "rien": 960 },
+    "n'est pas": { "grave": 980, "possible": 960, "vrai": 950 },
+    "à tout": { "à": 980, "de": 960 },
+    "de rien": { "mon": 920 },
+    "pas de": { "problème": 990, "souci": 980, "quoi": 960 },
+    "en train": { "de": 990 }
   }
 }

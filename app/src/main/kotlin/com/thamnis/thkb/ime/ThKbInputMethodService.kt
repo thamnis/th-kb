@@ -12,6 +12,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputMethodSubtype
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +33,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.thamnis.thkb.data.AssetRepository
 import com.thamnis.thkb.data.ClipboardHistoryManager
+import com.thamnis.thkb.data.PersonalDictionaryManager
 import com.thamnis.thkb.data.TodoListManager
 import com.thamnis.thkb.engine.SuggestionCandidate
 import com.thamnis.thkb.engine.SuggestionEngine
@@ -60,6 +62,7 @@ class ThKbInputMethodService :
     private lateinit var assets: AssetRepository
     private lateinit var clipboardHistory: ClipboardHistoryManager
     private lateinit var todoManager: TodoListManager
+    private lateinit var personalDictionary: PersonalDictionaryManager
     private data class PendingReplacement(
         val originalPrefix: String,
         val replacedText: String,
@@ -87,7 +90,9 @@ class ThKbInputMethodService :
         assets = AssetRepository(this)
         clipboardHistory = ClipboardHistoryManager(this)
         todoManager = TodoListManager(this)
+        personalDictionary = PersonalDictionaryManager(this)
         suggestionEngine = SuggestionEngine(this)
+        suggestionEngine.syncPersonalDictionary(personalDictionary.state.value, personalDictionary.toJson())
         Thread { suggestionEngine.warmUpAsync() }.start()
         audioManager = getSystemService(AUDIO_SERVICE) as? AudioManager
     }
@@ -116,7 +121,15 @@ class ThKbInputMethodService :
                 val settings by preferences.settings.collectAsState()
                 val clipboardEntries by clipboardHistory.entries.collectAsState()
                 val todoTasks by todoManager.tasks.collectAsState()
+                val personalState by personalDictionary.state.collectAsState()
                 val effectiveLayoutId = subtypeLayoutOverride ?: settings.layoutId
+
+                LaunchedEffect(personalState) {
+                    suggestionEngine.syncPersonalDictionary(
+                        personalState,
+                        personalDictionary.toJson(personalState),
+                    )
+                }
 
                 KeyboardRoot(
                     inputSessionKey = inputSessionKey,
@@ -172,11 +185,11 @@ class ThKbInputMethodService :
                         )
                     },
                     suggestions = suggestions,
-                    onSelectSuggestion = { candidateWord ->
+                    onSelectSuggestion = { candidate ->
                         val ic = currentInputConnection ?: return@KeyboardRoot
                         val before = ic.getTextBeforeCursor(96, 0)
-                        val (_, prefix) = suggestionEngine.extractContext(before)
-                        val replacementWithSpace = "$candidateWord "
+                        val (ctxWords, prefix) = suggestionEngine.extractContext(before)
+                        val replacementWithSpace = "${candidate.word} "
                         ic.beginBatchEdit()
                         try {
                             ic.finishComposingText()
@@ -186,6 +199,12 @@ class ThKbInputMethodService :
                             ic.commitText(replacementWithSpace, 1)
                         } finally {
                             ic.endBatchEdit()
+                        }
+                        if (inputContext != InputContext.PASSWORD && inputContext != InputContext.NUMBER) {
+                            val prevWord = ctxWords.lastOrNull().orEmpty()
+                            val boost = if (candidate.isLiteral) 10 else 3
+                            personalDictionary.learnWord(prevWord, candidate.word, boost)
+                            suggestionEngine.learnWord(prevWord, candidate.word, boost)
                         }
                         pendingReplacement = PendingReplacement(
                             originalPrefix = prefix,
@@ -198,10 +217,30 @@ class ThKbInputMethodService :
                         )
                         refreshSuggestions(effectiveLayoutId, settings)
                     },
+                    onBlockSuggestion = { word ->
+                        personalDictionary.blockWord(word)
+                        suggestionEngine.blockWord(word)
+                        playFeedback(
+                            haptics = settings.hapticsEnabled,
+                            sound = settings.soundEnabled,
+                        )
+                        refreshSuggestions(effectiveLayoutId, settings)
+                    },
                     onCommitText = { text ->
                         if (text in AUTO_REPLACE_TRIGGERS) {
                             val autoReplaced = tryAutoReplaceBeforeTrigger(text, effectiveLayoutId, settings)
                             if (!autoReplaced) {
+                                val before = currentInputConnection?.getTextBeforeCursor(96, 0)
+                                val (ctxWords, typedPrefix) = suggestionEngine.extractContext(before)
+                                if (typedPrefix.length >= 2 &&
+                                    inputContext != InputContext.PASSWORD &&
+                                    inputContext != InputContext.TERMINAL &&
+                                    inputContext != InputContext.NUMBER
+                                ) {
+                                    val prevWord = ctxWords.lastOrNull().orEmpty()
+                                    personalDictionary.learnWord(prevWord, typedPrefix, 2)
+                                    suggestionEngine.learnWord(prevWord, typedPrefix, 2)
+                                }
                                 pendingReplacement = null
                                 suppressedAutoReplacePrefix = null
                                 commitTextSafe(text)
@@ -376,7 +415,7 @@ class ThKbInputMethodService :
         val before = ic.getTextBeforeCursor(96, 0)
         val (ctxWords, prefix) = suggestionEngine.extractContext(before)
         val capHint = shouldAutoCapAtCurrentCursor(settings.autoCapOnOpen)
-        suggestions = suggestionEngine.suggestForInput(
+        val rawCandidates = suggestionEngine.suggestForInput(
             layoutId = effectiveLayoutId,
             contextWords = ctxWords,
             prefix = prefix,
@@ -385,6 +424,7 @@ class ThKbInputMethodService :
             capitalizeHint = capHint,
             maxResults = 3,
         )
+        suggestions = SuggestionEngine.formatStripCandidates(prefix, rawCandidates)
     }
 
     override fun onComputeInsets(outInsets: Insets?) {
@@ -418,6 +458,7 @@ class ThKbInputMethodService :
 
     override fun onDestroy() {
         clipboardHistory.destroy()
+        personalDictionary.destroy()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         viewModelStore.clear()

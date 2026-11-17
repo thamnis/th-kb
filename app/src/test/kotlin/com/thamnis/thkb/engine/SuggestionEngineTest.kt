@@ -177,4 +177,44 @@ class SuggestionEngineTest {
         val partialCandidates = engine.querySuggestions(dict, emptyList(), "bonj", "advanced_autocomplete", 5)
         assertEquals(null, SuggestionEngine.selectAutoReplacement("bonj", partialCandidates, "advanced_autocomplete", "azerty_fr"))
     }
+
+    @Test
+    fun personalDictionaryLearnsCustomWordsBigramsAndBlocks() {
+        val dict = SuggestionEngine.parseDictionary(sampleJson)
+        val engine = SuggestionEngine(null)
+
+        engine.learnWord("bonjour", "Thamnis", weightBoost = 15)
+
+        val customMatches = engine.querySuggestions(dict, emptyList(), "tham", "advanced_autocomplete", 3)
+        assertFalse(customMatches.isEmpty())
+        assertEquals("Thamnis", customMatches[0].word)
+
+        val learnedNext = engine.querySuggestions(dict, listOf("Bonjour"), "", "advanced_autocomplete", 3)
+        assertFalse(learnedNext.isEmpty())
+        assertEquals("Thamnis", learnedNext[0].word)
+
+        engine.blockWord("bonjour")
+        val blockedCheck = engine.querySuggestions(dict, emptyList(), "bonj", "autocomplete", 3)
+        assertFalse(blockedCheck.any { it.word == "bonjour" })
+    }
+
+    @Test
+    fun formatStripCandidatesPlacesLiteralLeftAndPrimaryCenter() {
+        val dict = SuggestionEngine.parseDictionary(sampleJson)
+        val engine = SuggestionEngine(null)
+
+        // When typing "bonj", literal "bonj" sits left and "bonjour" sits center
+        val partialRaw = engine.querySuggestions(dict, emptyList(), "bonj", "advanced_autocomplete", 3)
+        val partialStrip = SuggestionEngine.formatStripCandidates("bonj", partialRaw)
+        assertEquals("bonj", partialStrip[0].word)
+        assertEquals(true, partialStrip[0].isLiteral)
+        assertEquals("bonjour", partialStrip[1].word)
+        assertEquals(false, partialStrip[1].isLiteral)
+
+        // Unknown word surfaces literal chip so user can tap to keep/learn it
+        val unknownStrip = SuggestionEngine.formatStripCandidates("Thamnis", emptyList())
+        assertEquals(1, unknownStrip.size)
+        assertEquals("Thamnis", unknownStrip[0].word)
+        assertEquals(true, unknownStrip[0].isLiteral)
+    }
 }

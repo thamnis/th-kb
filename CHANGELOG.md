@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0-alpha.3] - 2026-11-17
+
+### Added
+- **On-Device Personal Dictionary & Adaptive Learning (`PersonalDictionaryManager`)**: Learns frequently typed custom words, names, slang, and 2-word transitions locally on-device—syncing live into both native Rust (`PersonalModel`) and Kotlin fallback with zero cloud calls.
+- **Long-Press Suggestion Blacklist**: Long-pressing any non-literal suggestion in the top strip hides/blacklists it immediately so unwanted words never reappear unless restored.
+- **Settings Personal Dictionary UI**: Added controls in `SettingsActivity` to add custom words manually, remove learned entries, restore hidden suggestions, or clear learned history.
+- **Quoted `"Literal"` Strip Slot**: Typing a word that differs from top prediction (or an unknown custom word) now displays `“typed”` on the left slot (`[“bonj” | bonjour | bon]`), letting you tap to keep and immediately learn your exact spelling.
+- **Expanded Conversational Bigrams & Trigrams**: Added dozens of high-frequency everyday French and English phrase transitions in `fr_common.json` and `en_common.json` for stronger next-word predictions.
+
+### Changed
+- Updated `ROADMAP.md` checking off all `v0.5` Text Suggestion, Dictionary, Rust Engine, and Personal Learning deliverables.
+
 ## [0.5.0-alpha.2] - 2026-11-17
 
 ### Added

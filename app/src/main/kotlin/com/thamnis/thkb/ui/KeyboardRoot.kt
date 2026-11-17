@@ -24,8 +24,10 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
@@ -229,7 +231,8 @@ fun KeyboardRoot(
     onUndo: () -> Unit = {},
     onRedo: () -> Unit = {},
     suggestions: List<SuggestionCandidate> = emptyList(),
-    onSelectSuggestion: (String) -> Unit = {},
+    onSelectSuggestion: (SuggestionCandidate) -> Unit = {},
+    onBlockSuggestion: (String) -> Unit = {},
 ) {
     var shiftState by remember(inputSessionKey, autoCapOnOpen) {
         mutableStateOf(if (autoCapOnOpen) ShiftState.ONCE else ShiftState.OFF)
@@ -325,6 +328,7 @@ fun KeyboardRoot(
                             },
                             suggestions = suggestions,
                             onSelectSuggestion = onSelectSuggestion,
+                            onBlockSuggestion = onBlockSuggestion,
                             onUndo = onUndo,
                             onRedo = onRedo,
                         )
@@ -744,13 +748,15 @@ fun KeyboardRoot(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ToolbarRow(
     panelMode: PanelMode,
     canResize: Boolean,
     isExpanded: Boolean,
     suggestions: List<SuggestionCandidate>,
-    onSelectSuggestion: (String) -> Unit,
+    onSelectSuggestion: (SuggestionCandidate) -> Unit,
+    onBlockSuggestion: (String) -> Unit,
     onResizeDeltaDp: (Float) -> Unit,
     onToggleExpand: () -> Unit,
     onToggleEmoji: () -> Unit,
@@ -824,11 +830,8 @@ private fun ToolbarRow(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
-                    val ordered = when {
-                        suggestions.size >= 3 -> listOf(suggestions[1], suggestions[0], suggestions[2])
-                        else -> suggestions
-                    }
-                    ordered.forEachIndexed { idx, candidate ->
+                    val displayCandidates = suggestions.take(3)
+                    displayCandidates.forEachIndexed { idx, candidate ->
                         if (idx > 0) {
                             Box(
                                 modifier = Modifier
@@ -837,7 +840,11 @@ private fun ToolbarRow(
                                     .background(HintTextColor.copy(alpha = 0.25f)),
                             )
                         }
-                        val isCenter = (ordered.size == 3 && idx == 1) || (ordered.size < 3 && idx == 0)
+                        val isCenter = when {
+                            displayCandidates.size >= 3 -> idx == 1
+                            displayCandidates.size == 2 && displayCandidates[0].isLiteral -> idx == 1
+                            else -> idx == 0
+                        }
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -846,12 +853,19 @@ private fun ToolbarRow(
                                 .then(
                                     if (isCenter) Modifier.background(ActionKeyBgColor.copy(alpha = 0.55f)) else Modifier,
                                 )
-                                .clickable { onSelectSuggestion(candidate.word) }
+                                .combinedClickable(
+                                    onClick = { onSelectSuggestion(candidate) },
+                                    onLongClick = {
+                                        if (!candidate.isLiteral) {
+                                            onBlockSuggestion(candidate.word)
+                                        }
+                                    },
+                                )
                                 .padding(horizontal = 3.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = candidate.word,
+                                text = if (candidate.isLiteral) "“${candidate.word}”" else candidate.word,
                                 color = if (isCenter) Color.White else Color(0xFFDDDDDD),
                                 fontSize = if (isCenter) 15.sp else 14.sp,
                                 fontWeight = if (isCenter) FontWeight.SemiBold else FontWeight.Normal,

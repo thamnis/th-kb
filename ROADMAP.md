@@ -41,14 +41,14 @@
 
 ## `v0.5` — Text Suggestions, Dictionaries (EN, FR, Ivorian/Nouchi) & Autocomplete
 
-- [ ] **High-Performance Rust Trie / FST Engine** in `rust-core` with sub-microsecond prefix lookups and Damerau-Levenshtein typo tolerance
-- [ ] **Comprehensive & Tiny Dictionaries**:
-  - English (`en`): compact frequency lexicon + complete inflected dictionary
-  - French (`fr`): Lexique3-derived frequency lexicon + full conjugations
-  - Ivorian French & Nouchi (`fr_CI` / `nouchi`): popular street vocabulary, expressions, and local phrasing
-- [ ] **Optimal Context Window (Trigram / 64-char context)**: Contextual next-word prediction based on preceding tokens
-- [ ] **3-Candidate Suggestion Strip**: Seamless top suggestion bar (`[literal] | [predicted/completed] | [next-word]`)
-- [ ] **Composing Text Flow**: Native `InputConnection.setComposingText()` underlining and single-tap word replacement
+- [x] **High-Performance Native Rust SymSpell + Spatial Engine** in `rust-core` (`arm64-v8a`, `armeabi-v7a`, `x86_64`) with sorted prefix buckets and layout-aware Damerau-Levenshtein typo tolerance
+- [x] **30,000-Word Conversational Dictionaries + Ivorian Overlay**:
+  - English (`en`): 30,000 cleaned OpenSubtitles conversational words + common bigrams/trigrams
+  - French (`fr`): 30,000 cleaned OpenSubtitles conversational words + common bigrams/trigrams
+  - Ivorian French & Nouchi (`fr_CI` / `nouchi`): authentic street vocabulary, expressions, city names, and colloquial phrasing
+- [x] **Optimal Context Window (Trigram / 96-char context)**: Contextual next-word prediction and flexible `{autocomplete or advanced_autocomplete}` toggle
+- [x] **3-Candidate Suggestion Strip & Auto-Replacement**: Dynamic strip with quoted `"literal"` slot, centered `#1` recommendation, space/punctuation auto-replace, and one-tap **Cancel-on-Delete (`⌫`)**
+- [x] **On-Device Personal Dictionary & Adaptive Learning**: Local word/bigram learning, long-press suggestion blacklist, and Settings word management UI
 
 ## `v1.0` — Public Release
 

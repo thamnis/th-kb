@@ -27,4 +27,14 @@ internal object NativeSuggestionBridge {
         capitalizeHint: Boolean,
         maxResults: Int,
     ): String
+
+    external fun nativeSyncPersonalDictionary(personalJson: String): Boolean
+
+    external fun nativeLearnWord(
+        prevWord: String,
+        word: String,
+        weightBoost: Int,
+    )
+
+    external fun nativeBlockWord(word: String)
 }
