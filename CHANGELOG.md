@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-alpha.1] - 2026-11-17
+
+### Added
+- **Built-in Animated Todo List Panel**: Accessible directly from the keyboard toolbar with persistent JSON storage (`TodoListManager`), task completion progress bar, animated task reordering (`animateItem()`), strike-through sweep on completion, one-tap text insertion into active apps, and delete/clear actions.
+- **Gboard-Style Bottom Emoji & Kaomoji Navigation**: Moved layout navigation to the bottom row (`ABC` | `☺` | `★` | `:-)` | `⌫`) with animated indicator pills, smooth horizontal sliding and fading content transitions (`AnimatedContent`), and direct keyboard return.
+- **Comprehensive Emojis Library**: Added complete Unicode sections for **Flags** (256 national, regional, and symbolic flags), **Symbols** (203+ hearts, signs, media/audio controls, arrows, zodiac, math, currencies, and geometric shapes), and **Travel & Places** (120+ vehicles, landmarks, and landscapes).
+- **Two-Way Synchronized Category Navigation**: Real-time synchronization between the emoji grid scroll position and top category symbol icons (`derivedStateOf`); automatically scrolls the category bar to keep the active section in view, and smoothly scrolls to section headers on category tap.
+- **Gliding Bubble Passing Transitions in Accent Popups**: Floating diacritic selection bubble spring-glides continuously (`animateFloatAsState`) beneath the user's finger as they navigate between letter variants in `AccentVariantsPopup`. Key preview bubble also glides smoothly between adjacent keys.
+- **Natural Vertical Sheet Transitions**: Keyboard ↔ Emoji/Kaomoji panel switching now uses a physical vertical sliding sheet transition.
+- **Expanded Intelligence & Gadgets Backlog**: Added GitHub Issue #34 (Google Tasks sync for Todo list) and logged backlog milestones for offline dictionary, voice typing, rambler, language level metrics, OCR, undo-redo, currency converter, media control, lyrics, fancy text, and note taker.
+
+### Changed
+- **Blink-Free Layer Switching**: Removed row-level blinking animations in `TouchKeyGrid` so switching between `ABC`, `?123`, and `=\<` is instant, crisp, and responsive.
+- **Removed Emoji Search Bar**: Streamlined top emoji header to focus purely on quick category symbols navigation without clutter.
+
 ## [0.2.0-alpha.1] - 2026-11-16
 
 ### Added

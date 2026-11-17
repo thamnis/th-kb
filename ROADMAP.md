@@ -40,17 +40,29 @@
 
 - [ ] Shortcuts to first/last characters (Home/End)
 - [ ] Move cursor/selection by letter, word, phrase, and paragraph
+- [ ] **Undo & Redo** (in-memory edit stack + `InputConnection` text snapshot restoration)
 - [ ] **Rich media copy-pasting** (clipboard image/GIF items committed via `InputConnectionCompat.commitContent()`)
 - [ ] **GIFs & Stickers** (`InputConnectionCompat.commitContent()`)
+- [ ] **Emoji search** (keyword search inside the Emoji & Kaomoji panel backed by `rust-core`)
+- [ ] **Discord-like `:shortcode:` emoji writing** (inline `:emoji_name:` autocomplete & replacement)
 
 ## `v1.3` — Cross-Device File & Remote Control
 
 - [ ] **File sending** via **LocalSend** and **KDE Connect** protocols
 - [ ] **Remote KB & mouse** for computer (local Wi-Fi / Bluetooth HID with Rust desktop companion)
 
-## `v2.0` — Intelligence
+## `v2.0` — Intelligence & Productivity Suite
 
 - [ ] **Word suggestions & completion** (top-bar suggestion candidates backed by `rust-core`)
-- [ ] **Dictionaries (`en`, `fr`) & Personal dictionary** (offline EN/FR lexicons + user-learned/custom words)
+- [ ] **Dictionaries (`en`, `fr`), Personal dictionary & Word lookup** (offline EN/FR lexicons + user-learned/custom words)
 - [ ] **Glided typing** (swipe path sampling + Rust trie/beam-search decoder)
-- [ ] **Hands-free typing** (`SpeechRecognizer` / offline ASR)
+- [ ] **Voice typing** (`SpeechRecognizer` / offline ASR)
+- [ ] **Rambler mode** (continuous long-form voice dictation & structured text cleanup)
+- [ ] **Language level metrics** (user vocabulary richness, CEFR level estimation, and typing stats)
+- [ ] **OCR text scanner** (camera/screenshot optical character recognition directly into the active text field)
+- [ ] **Fancy text generator** (live Unicode font styles: serif, script, fraktur, monospace, circled, small caps)
+- [ ] **Built-in Note taker** (quick scratchpad notes panel inside the keyboard)
+- [x] **Built-in Animated Todo list** (checkable task list panel inside keyboard with strike-through sweep, progress bar, paste-into-text, and smooth item animations)
+- [ ] **Google Tasks synchronization** (link built-in Todo list panel to Google Tasks via OAuth 2.0 with offline-first bi-directional sync)
+- [ ] **Currency converter** (inline currency conversion calculator in the keyboard utility bar)
+- [ ] **Media control & Music lyrics** (system media playback controls + live/searchable song lyrics insertion)

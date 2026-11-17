@@ -32,6 +32,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.thamnis.thkb.data.AssetRepository
 import com.thamnis.thkb.data.ClipboardHistoryManager
+import com.thamnis.thkb.data.TodoListManager
 import com.thamnis.thkb.settings.KbPreferences
 import com.thamnis.thkb.settings.SettingsActivity
 import com.thamnis.thkb.ui.KeyboardRoot
@@ -55,6 +56,7 @@ class ThKbInputMethodService :
     private lateinit var preferences: KbPreferences
     private lateinit var assets: AssetRepository
     private lateinit var clipboardHistory: ClipboardHistoryManager
+    private lateinit var todoManager: TodoListManager
     private var audioManager: AudioManager? = null
     private var inputComposeView: ComposeView? = null
 
@@ -72,6 +74,7 @@ class ThKbInputMethodService :
         preferences = KbPreferences(this)
         assets = AssetRepository(this)
         clipboardHistory = ClipboardHistoryManager(this)
+        todoManager = TodoListManager(this)
         audioManager = getSystemService(AUDIO_SERVICE) as? AudioManager
     }
 
@@ -98,6 +101,7 @@ class ThKbInputMethodService :
             setContent {
                 val settings by preferences.settings.collectAsState()
                 val clipboardEntries by clipboardHistory.entries.collectAsState()
+                val todoTasks by todoManager.tasks.collectAsState()
                 val effectiveLayoutId = subtypeLayoutOverride ?: settings.layoutId
 
                 KeyboardRoot(
@@ -108,6 +112,7 @@ class ThKbInputMethodService :
                         context = inputContext,
                         autoCapPref = settings.autoCapOnOpen,
                     ),
+                    showKeyPreview = settings.showKeyPreview,
                     longPressDelayMs = settings.longPressDelayMs,
                     rapidDeleteDelayMs = settings.rapidDeleteDelayMs,
                     deleteGesturesEnabled = settings.deleteGesturesEnabled,
@@ -116,6 +121,7 @@ class ThKbInputMethodService :
                     returnAction = returnAction,
                     assets = assets,
                     clipboardEntries = clipboardEntries,
+                    todoTasks = todoTasks,
                     favoriteItems = settings.favoriteItems,
                     recentEmojis = settings.recentEmojis,
                     onToggleFavorite = { item ->
@@ -132,6 +138,18 @@ class ThKbInputMethodService :
                     },
                     onClearUnpinnedClips = {
                         clipboardHistory.clearUnpinned()
+                    },
+                    onAddTodoTask = { title ->
+                        todoManager.addTask(title)
+                    },
+                    onToggleTodoTask = { id ->
+                        todoManager.toggleTask(id)
+                    },
+                    onDeleteTodoTask = { id ->
+                        todoManager.deleteTask(id)
+                    },
+                    onClearCompletedTodoTasks = {
+                        todoManager.clearCompleted()
                     },
                     onKeyFeedback = {
                         playFeedback(

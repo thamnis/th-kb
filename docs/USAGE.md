@@ -97,5 +97,40 @@ Tap the **Clipboard** icon in the top toolbar to open the Clipboard History pane
 - Stores up to **25 recent text clips** automatically.
 - **Tap a clip** to insert it at the cursor.
 - **Pin (`📌`)** important clips so they stay at the top and survive **Clear unpinned**.
-- **Delete (`🗑`)** individual clips or tap **Paste from system** to trigger Android's native context-menu paste.
+- **Deletes (`🗑`)** individual clips or tap **Paste from system** to trigger Android's native context-menu paste.
 - Vertical resizing is automatically enabled when more than 4 clips are stored.
+
+---
+
+## 9. Animated Built-in Todo List Panel
+
+Tap the **Checklist** icon in the top toolbar to access your quick task manager:
+- **Instant Task Paste:** Tap any task's text or paste icon to insert that task directly into the active app's input field without leaving your keyboard.
+- **Dynamic Checkbox Animations:** Checking a task triggers a bouncy scale transition (`AnimatedContent`) from hollow circle to green filled checkmark.
+- **Animated Strike-Through Sweep:** The strike-through line dynamically animates from left to right across the task title (`drawWithContent` + `strikeProgress`), and text color smoothly dims to muted gray.
+- **Smooth Item Reordering & Placement:** Powered by `Modifier.animateItem()`, checking off a task glides it smoothly down to the completed section, unchecking it glides it back up, and deleting an item smoothly collapses and slides remaining items up.
+- **Dynamic Progress Bar:** A top `LinearProgressIndicator` animates in real-time showing your completed ratio (e.g. `2/5`).
+- **Inline Task Composer:** Tap **`+ Add task`** to reveal an animated inline text input bar (`AnimatedVisibility` expand/collapse) to type and save new tasks with key feedback.
+- **Clear Done:** The **`Clear done`** chip automatically slides in when completed tasks exist and clears them with exit animations.
+- **Persistence & JSON Backup:** Tasks are saved persistently across keyboard openings and device reboots, and are included in JSON Backup/Restore.
+
+---
+
+## 10. Backup & Restore (JSON) & Key Preview
+
+- **Key-Press Popup Preview:** Displays a tactile Gboard-style character preview bubble above pressed keys (`Show key-press popup preview` in Settings).
+- **JSON Backup & Restore:** In **th-kb Settings → Backup & Restore (JSON)**, tap **Export JSON** to save all your layout preferences, gesture timings, favorite emojis/kaomojis, recent emojis, pinned clipboard items, and todo tasks to a timestamped `.json` file (`th-kb-backup-yyyy-MM-dd_HH-mm-ss.json`), or tap **Import JSON** to restore them on any device.
+
+---
+
+## 11. Fluid Keyboard Action Animations
+
+All interactions across `th-kb` feature tactile, 60fps Compose animations:
+- **Keypress Spring Bounce:** Every keycap features a tactile depression bounce (`scale(0.93f)`) and instant background color transition on touch.
+- **Key Preview Bubble Pop-in:** Character preview bubble pops up above keys with a bouncy spring animation (`scaleIn(0.65f) + fadeIn()`) and pops out cleanly on release.
+- **Accent Variants Popup:** Floating diacritics menu pops in with a spring bounce; sliding your finger across variants interactively enlarges (`scale(1.15f)`) and highlights the selected character.
+- **Backspace 180° Flip:** Gliding down on Backspace smoothly flips the keycap icon 180 degrees (`rotationY`) to transition into Forward Delete (`⌦`).
+- **Shift Pulse & CAPS LOCK Underline:** Tapping Shift pulses the arrow icon with a bouncy spring, and double-tapping into CAPS LOCK smoothly fades and slides in the underline bar.
+- **Spacebar Cursor Glide Indicator:** Gliding across the Spacebar expands the keycap (`scale(1.03f)`) and displays glowing cursor glide arrows (`‹   EN • FR   ›`).
+- **Return Action Morph:** Return/action key morphs between Search, Send, Next, Done, and Return with animated icon scaling and crossfade.
+- **Toolbar & Panel Transitions:** Toolbar mode buttons animate with pill background transitions, while switching between Keyboard, Emoji, Clipboard, and Todo panels is powered by fluid crossfades and subtle scale transitions.

@@ -2,6 +2,7 @@ package com.thamnis.thkb.ime
 
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
+import androidx.compose.runtime.Immutable
 
 enum class ShiftState {
     OFF,
@@ -20,6 +21,7 @@ enum class PanelMode {
     EMOJI,
     KAOMOJI,
     CLIPBOARD,
+    TODO,
 }
 
 enum class InputContext {
@@ -40,12 +42,20 @@ enum class ReturnAction(val label: String) {
     DONE("Done"),
 }
 
+@Immutable
 data class AccentPopupState(
     val baseKey: String,
     val variants: List<String>,
     val selectedIndex: Int = 0,
     val anchorX: Float = 0f,
     val anchorY: Float = 0f,
+)
+
+@Immutable
+data class KeyPreviewState(
+    val label: String,
+    val centerX: Float,
+    val topY: Float,
 )
 
 object KeyboardStateLogic {

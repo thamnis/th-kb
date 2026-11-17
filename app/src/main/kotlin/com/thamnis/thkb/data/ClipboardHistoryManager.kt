@@ -69,6 +69,20 @@ class ClipboardHistoryManager(context: Context) {
         saveEntries(updated)
     }
 
+    fun restorePinnedClips(clips: List<ClipboardEntry>) {
+        if (clips.isEmpty()) return
+        val current = _entries.value.toMutableList()
+        clips.forEach { restored ->
+            val idx = current.indexOfFirst { it.text == restored.text }
+            if (idx >= 0) {
+                current[idx] = current[idx].copy(pinned = true)
+            } else {
+                current.add(0, restored.copy(pinned = true))
+            }
+        }
+        saveEntries(current.sortedByDescending { it.pinned }.take(MAX_ITEMS))
+    }
+
     fun destroy() {
         clipboard?.removePrimaryClipChangedListener(clipListener)
     }

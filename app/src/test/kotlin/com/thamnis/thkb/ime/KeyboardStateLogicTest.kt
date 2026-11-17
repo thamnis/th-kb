@@ -101,4 +101,47 @@ class KeyboardStateLogicTest {
         assertFalse(KeyboardStateLogic.shouldAutoCapBeforeCursor("Hello. ", InputContext.URL, true))
         assertFalse(KeyboardStateLogic.shouldAutoCapBeforeCursor("Hello. ", InputContext.NORMAL, false))
     }
+
+    @Test
+    fun backupCodecRoundTripsSettingsAndPinnedClips() {
+        val original = com.thamnis.thkb.settings.KbSettings(
+            layoutId = "azerty_fr",
+            hapticsEnabled = false,
+            soundEnabled = true,
+            autoCapOnOpen = false,
+            showKeyPreview = false,
+            longPressDelayMs = 600L,
+            rapidDeleteDelayMs = 750L,
+            deleteGesturesEnabled = false,
+            resetForwardDeleteOnChar = true,
+            emojiGridColumns = 8,
+            favoriteItems = setOf("🔥", "(^_^)"),
+            recentEmojis = listOf("🚀", "🔥"),
+        )
+        val clips = listOf(
+            com.thamnis.thkb.data.ClipboardEntry("pinned clip", pinned = true),
+            com.thamnis.thkb.data.ClipboardEntry("temp clip", pinned = false),
+        )
+        val json = com.thamnis.thkb.settings.KbBackupCodec.encode(original, clips)
+        val (decoded, decodedClips) = com.thamnis.thkb.settings.KbBackupCodec.decode(json)
+        assertEquals(original, decoded)
+        assertEquals(1, decodedClips.size)
+        assertEquals("pinned clip", decodedClips[0].text)
+    }
+
+    @Test
+    fun backupCodecRoundTripsTodoTasks() {
+        val original = com.thamnis.thkb.settings.KbSettings()
+        val tasks = listOf(
+            com.thamnis.thkb.data.TodoTask(id = "1", title = "Buy groceries", isCompleted = false),
+            com.thamnis.thkb.data.TodoTask(id = "2", title = "Ship v1.0", isCompleted = true),
+        )
+        val json = com.thamnis.thkb.settings.KbBackupCodec.encode(original, todoTasks = tasks)
+        val decodedFull = com.thamnis.thkb.settings.KbBackupCodec.decodeFull(json)
+        assertEquals(2, decodedFull.todoTasks.size)
+        assertEquals("Buy groceries", decodedFull.todoTasks[0].title)
+        assertFalse(decodedFull.todoTasks[0].isCompleted)
+        assertEquals("Ship v1.0", decodedFull.todoTasks[1].title)
+        assertTrue(decodedFull.todoTasks[1].isCompleted)
+    }
 }
