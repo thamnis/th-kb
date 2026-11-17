@@ -1,0 +1,140 @@
+{
+  "words": {
+    "bonjour": 1200,
+    "bon": 1150,
+    "bonne": 1100,
+    "merci": 1300,
+    "beaucoup": 1050,
+    "salut": 1000,
+    "comment": 1100,
+    "vas": 950,
+    "tu": 1400,
+    "je": 1600,
+    "suis": 1300,
+    "nous": 1100,
+    "vous": 1250,
+    "il": 1350,
+    "elle": 1200,
+    "ils": 1100,
+    "elles": 900,
+    "bien": 1250,
+    "très": 1150,
+    "oui": 1200,
+    "non": 1150,
+    "d'accord": 1000,
+    "pour": 1400,
+    "avec": 1300,
+    "dans": 1350,
+    "sur": 1250,
+    "faire": 1100,
+    "fait": 1050,
+    "tout": 1200,
+    "tous": 1050,
+    "toute": 950,
+    "avoir": 1100,
+    "être": 1250,
+    "est": 1500,
+    "sont": 1150,
+    "qui": 1250,
+    "que": 1400,
+    "quoi": 1000,
+    "pourquoi": 950,
+    "quand": 1000,
+    "où": 1100,
+    "ici": 1050,
+    "là": 1000,
+    "maintenant": 950,
+    "demain": 900,
+    "hier": 850,
+    "soir": 900,
+    "matin": 900,
+    "journée": 950,
+    "nuit": 850,
+    "temps": 1000,
+    "travail": 950,
+    "maison": 950,
+    "ami": 900,
+    "famille": 900,
+    "ensemble": 950,
+    "peut-être": 900,
+    "toujours": 950,
+    "jamais": 900,
+    "aussi": 1100,
+    "encore": 1000,
+    "vraiment": 950,
+    "super": 950,
+    "génial": 850,
+    "parfait": 900,
+    "plaît": 950,
+    "soirée": 900,
+    "arriver": 850,
+    "partir": 850,
+    "aller": 1000,
+    "venir": 950,
+    "voir": 950,
+    "savoir": 950,
+    "vouloir": 950,
+    "pouvoir": 1000
+  },
+  "bigrams": {
+    "comment": {
+      "vas": 950,
+      "allez": 920,
+      "tu": 900
+    },
+    "merci": {
+      "beaucoup": 990,
+      "infiniment": 800
+    },
+    "bonne": {
+      "journée": 980,
+      "soirée": 960,
+      "nuit": 940
+    },
+    "je": {
+      "suis": 980,
+      "veux": 920,
+      "peux": 910,
+      "vais": 950
+    },
+    "s'il": {
+      "vous": 990,
+      "te": 950
+    },
+    "très": {
+      "bien": 980,
+      "bon": 920
+    },
+    "tout": {
+      "va": 960,
+      "est": 940,
+      "le": 950
+    },
+    "tu": {
+      "es": 970,
+      "vas": 960,
+      "peux": 910
+    }
+  },
+  "trigrams": {
+    "s'il vous": {
+      "plaît": 990
+    },
+    "s'il te": {
+      "plaît": 990
+    },
+    "comment vas": {
+      "tu": 990
+    },
+    "comment allez": {
+      "vous": 990
+    },
+    "je vais": {
+      "bien": 970,
+      "arriver": 920
+    },
+    "tout va": {
+      "bien": 980
+    }
+  }
+}

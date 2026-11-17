@@ -1,0 +1,158 @@
+{
+  "words": {
+    "hello": 1100,
+    "hi": 1050,
+    "hey": 1000,
+    "good": 1200,
+    "morning": 1050,
+    "evening": 950,
+    "night": 1000,
+    "thank": 1250,
+    "thanks": 1200,
+    "you": 1600,
+    "the": 1800,
+    "and": 1500,
+    "that": 1400,
+    "have": 1350,
+    "for": 1350,
+    "not": 1300,
+    "with": 1300,
+    "this": 1350,
+    "but": 1250,
+    "from": 1200,
+    "they": 1200,
+    "we": 1250,
+    "say": 1100,
+    "her": 1100,
+    "she": 1150,
+    "or": 1200,
+    "an": 1150,
+    "will": 1250,
+    "my": 1300,
+    "one": 1200,
+    "all": 1250,
+    "would": 1200,
+    "there": 1200,
+    "their": 1150,
+    "what": 1300,
+    "so": 1250,
+    "up": 1150,
+    "out": 1150,
+    "if": 1200,
+    "about": 1200,
+    "who": 1150,
+    "get": 1200,
+    "which": 1150,
+    "go": 1200,
+    "me": 1250,
+    "when": 1200,
+    "make": 1150,
+    "can": 1300,
+    "like": 1250,
+    "time": 1150,
+    "no": 1200,
+    "just": 1200,
+    "him": 1100,
+    "know": 1200,
+    "take": 1100,
+    "people": 1050,
+    "into": 1100,
+    "year": 1000,
+    "your": 1300,
+    "some": 1150,
+    "could": 1150,
+    "them": 1150,
+    "see": 1150,
+    "other": 1100,
+    "than": 1100,
+    "then": 1150,
+    "now": 1150,
+    "look": 1100,
+    "only": 1100,
+    "come": 1100,
+    "its": 1100,
+    "over": 1050,
+    "think": 1150,
+    "also": 1100,
+    "back": 1100,
+    "after": 1100,
+    "use": 1050,
+    "two": 1050,
+    "how": 1200,
+    "our": 1150,
+    "work": 1100,
+    "first": 1100,
+    "well": 1100,
+    "way": 1100,
+    "even": 1050,
+    "new": 1100,
+    "want": 1150,
+    "because": 1100,
+    "any": 1100,
+    "these": 1050,
+    "give": 1050,
+    "day": 1100,
+    "most": 1050,
+    "us": 1100,
+    "great": 1100,
+    "welcome": 1050,
+    "please": 1100
+  },
+  "bigrams": {
+    "how": {
+      "are": 980,
+      "is": 920,
+      "was": 890
+    },
+    "thank": {
+      "you": 990
+    },
+    "good": {
+      "morning": 980,
+      "night": 960,
+      "luck": 920,
+      "job": 910
+    },
+    "see": {
+      "you": 980
+    },
+    "in": {
+      "order": 960,
+      "the": 980
+    },
+    "what": {
+      "is": 970,
+      "are": 950,
+      "do": 940
+    },
+    "i": {
+      "am": 980,
+      "will": 950,
+      "would": 940,
+      "think": 940,
+      "have": 960
+    }
+  },
+  "trigrams": {
+    "how are": {
+      "you": 990
+    },
+    "in order": {
+      "to": 990
+    },
+    "see you": {
+      "later": 980,
+      "tomorrow": 970,
+      "soon": 960
+    },
+    "thank you": {
+      "so much": 990,
+      "very much": 980
+    },
+    "have a": {
+      "good day": 980,
+      "great day": 970,
+      "nice weekend": 960
+    }
+  }
+}

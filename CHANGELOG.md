@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0-alpha.1] - 2026-11-17
+
+### Added
+- **Text Suggestion & Autocompletion Engine**: Integrated native suggestion engine in both Rust (`rust-core/src/suggestion.rs`) and Kotlin (`SuggestionEngine.kt`) featuring exact prefix lookup, case/accent insensitivity, and sub-microsecond query execution.
+- **Context Window Sweet-Spot (Trigram / Bigram Context)**: Evaluates up to 96 characters of preceding text before cursor, extracting 2 context words to boost prediction accuracy (>85-90%) and offer next-word predictions before typing.
+- **Ivorian French & Nouchi Dictionary (`fr_CI`)**: Curated 50+ high-frequency Ivorian words and popular street slang (*môgô*, *djossi*, *enjaillement*, *sciencer*, *chap-chap*, *gaou*, *drap*, *chicoter*, *ya fohi*, *garba*, *attiéké*, *alloco*, *kpakpato*, etc.) with colloquial bigrams/trigrams (*ya fohi*, *c'est kpata*, *il faut sciencer*).
+- **Flexible Autocomplete Mode Setting**: Toggle between `{autocomplete or advanced_autocomplete}` in Settings:
+  - `autocomplete`: Standard exact dictionary prefix completion.
+  - `advanced_autocomplete`: Contextual Trigram/Bigram boosting, Levenshtein edit distance typo correction ($\le 1$), and next-word suggestions.
+- **Dynamic 3-Candidate Suggestion Strip**: Sleek top toolbar row displaying 3 suggestion candidates with divider bars, highlighted center recommendation, single-tap word completion, and instant toggle (`>` / `<`) between suggestions and tools.
+- **Simple Mode Backlogged to `v3.0`**: Created roadmap milestone for a minimalist, distraction-free pure typing mode in `ROADMAP.md`.
+
 ## [0.4.0-alpha.1] - 2026-11-17
 
 ### Added

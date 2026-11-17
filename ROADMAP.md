@@ -23,14 +23,41 @@
 - [x] Multi-item clipboard history (pin, delete, clear unpinned, system paste)
 - [x] **Emoji & Kaomoji favorites** (pinned/starred emojis and kaomojis tab + high-DPI native Compose emoji grid with configurable column size)
 
+## `v0.3` — Animated Todo List & Comprehensive Emojis
+
+- [x] **Built-in Animated Todo List Panel** with task completion sweep, progress bar, paste into active text, and smooth animations
+- [x] **Gboard-Style Bottom Emoji & Kaomoji Navigation** (`ABC` | `☺` | `★` | `:-)` | `⌫`) with animated indicator pills and sliding transitions
+- [x] **Comprehensive Emojis Library** (complete Flags, comprehensive Symbols, Travel & Places)
+- [x] **Two-Way Synchronized Category Navigation** with real-time scrolling synchronization
+- [x] **Gliding Bubble Passing Transitions** in accent popup and key preview bubbles
+- [x] **Blink-Free Instant Layer Switching**
+
+## `v0.4` — Dedicated Numpad, Undo/Redo & Timestamped Backup
+
+- [x] **Dedicated Numeric-Only Layout (Numpad)** with 3x4 phone layout, math operators, and long-press scientific variants
+- [x] **Glide-Up Mode Toggle for Numeric Numpad** on `?123` / `ABC` with corner indicator hints (`123` / `?#`)
+- [x] **Compact Undo & Redo Toolbar Widget** (`↺ | ↻`) with vertical bar divider and unlabelled sleek dimensions
+- [x] **Timestamped JSON Backup & Restore** (`thkb_backup_yyyyMMdd_HHmmss.json`) for settings, clipboard history, favorites, and to-do lists
+
+## `v0.5` — Text Suggestions, Dictionaries (EN, FR, Ivorian/Nouchi) & Autocomplete
+
+- [ ] **High-Performance Rust Trie / FST Engine** in `rust-core` with sub-microsecond prefix lookups and Damerau-Levenshtein typo tolerance
+- [ ] **Comprehensive & Tiny Dictionaries**:
+  - English (`en`): compact frequency lexicon + complete inflected dictionary
+  - French (`fr`): Lexique3-derived frequency lexicon + full conjugations
+  - Ivorian French & Nouchi (`fr_CI` / `nouchi`): popular street vocabulary, expressions, and local phrasing
+- [ ] **Optimal Context Window (Trigram / 64-char context)**: Contextual next-word prediction based on preceding tokens
+- [ ] **3-Candidate Suggestion Strip**: Seamless top suggestion bar (`[literal] | [predicted/completed] | [next-word]`)
+- [ ] **Composing Text Flow**: Native `InputConnection.setComposingText()` underlining and single-tap word replacement
+
 ## `v1.0` — Public Release
 
 - [ ] Daily-driver stability, touch latency tuning, and `v0.x` bug fixes
-- [ ] Layout & settings backup/export (JSON)
+- [x] Layout & settings backup/export (JSON) *(shipped in v0.4)*
 
 ## `v1.1` — Ergonomics & Themes
 
-- [ ] **Numeric-only keyboard mode** (dedicated large 3×4 numpad for `TYPE_CLASS_NUMBER` / `TYPE_CLASS_PHONE` fields)
+- [x] **Numeric-only keyboard mode** (dedicated large 3×4 numpad) *(shipped in v0.4)*
 - [ ] **KB separation** (split mode)
 - [ ] **One-hand mode** (left/right docked)
 - [ ] **Floating KB** (`onComputeInsets` + `touchableInsets`)
@@ -54,8 +81,6 @@
 
 ## `v2.0` — Intelligence & Productivity Suite
 
-- [ ] **Word suggestions & completion** (top-bar suggestion candidates backed by `rust-core`)
-- [ ] **Dictionaries (`en`, `fr`), Personal dictionary & Word lookup** (offline EN/FR lexicons + user-learned/custom words)
 - [ ] **Glided typing** (swipe path sampling + Rust trie/beam-search decoder)
 - [ ] **Voice typing** (`SpeechRecognizer` / offline ASR)
 - [ ] **Rambler mode** (continuous long-form voice dictation & structured text cleanup)
@@ -63,5 +88,11 @@
 - [ ] **OCR text scanner** (camera/screenshot optical character recognition directly into the active text field)
 - [ ] **Fancy text generator** (live Unicode font styles: serif, script, fraktur, monospace, circled, small caps)
 - [ ] **Built-in Note taker** (quick scratchpad notes panel inside the keyboard)
-- [x] **Built-in Animated Todo list** (checkable task list panel inside keyboard with strike-through sweep, progress bar, paste-into-text, and smooth item animations)
+- [x] **Built-in Animated Todo list** *(shipped in v0.3)*
 - [ ] **Currency converter** (inline currency conversion calculator in the keyboard utility bar)
+
+## `v3.0` — Simple Mode & Distraction-Free Workflows
+
+- [ ] **Simple Mode (Distraction-Free Keyboard)**: Minimalist, zero-gadget keyboard mode stripping away toolbars, accessory strips, and complex menus for pure, ultra-fast typing
+- [ ] **High-Contrast Minimalist Aesthetic**: Clean typography, maximized key hitboxes, and distraction-free layout options
+- [ ] **Instant Toggle & Battery Saver**: One-tap toggle between Full Feature Mode and Simple Mode, with zero background service overhead and ultra-light memory footprint

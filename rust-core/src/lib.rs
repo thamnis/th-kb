@@ -1,5 +1,6 @@
 pub mod layout;
 pub mod search;
+pub mod suggestion;
 
 uniffi::setup_scaffolding!();
 
@@ -19,6 +20,18 @@ pub fn lookup_accents(accents_json: &str, key: &str) -> Vec<String> {
 #[uniffi::export]
 pub fn search_kaomoji(kaomoji_json: &str, query: &str) -> Vec<search::KaomojiEntry> {
     search::search_kaomoji_from_json(kaomoji_json, query)
+}
+
+/// Queries text suggestion and autocomplete candidates from a JSON dictionary model.
+#[uniffi::export]
+pub fn get_suggestions(
+    dict_json: &str,
+    context_words: Vec<String>,
+    prefix: String,
+    mode: String,
+    max_results: u32,
+) -> Vec<suggestion::SuggestionCandidate> {
+    suggestion::get_suggestions_from_json(dict_json, context_words, prefix, mode, max_results)
 }
 
 #[cfg(test)]

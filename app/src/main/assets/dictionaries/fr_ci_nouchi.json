@@ -1,0 +1,117 @@
+{
+  "words": {
+    "môgô": 950,
+    "mogo": 940,
+    "djossi": 920,
+    "enjaillement": 910,
+    "enjailler": 880,
+    "sciencer": 900,
+    "science": 870,
+    "chap": 860,
+    "chap-chap": 920,
+    "gaou": 890,
+    "drap": 880,
+    "chicoter": 840,
+    "gbatou": 830,
+    "kpakpato": 860,
+    "bété-bété": 810,
+    "tchoko": 850,
+    "ya": 800,
+    "fohi": 870,
+    "foutou": 860,
+    "garba": 940,
+    "attiéké": 950,
+    "alloco": 940,
+    "aloco": 900,
+    "gbonhi": 830,
+    "wé": 850,
+    "déh": 890,
+    "deh": 880,
+    "faroteur": 820,
+    "faroter": 810,
+    "gnata": 800,
+    "affairage": 830,
+    "proprement": 850,
+    "boucan": 840,
+    "grotto": 830,
+    "plaisantin": 820,
+    "yako": 910,
+    "kpata": 890,
+    "dégamage": 810,
+    "dégamer": 800,
+    "zouglou": 880,
+    "coupé-décalé": 870,
+    "mousso": 820,
+    "têche": 790,
+    "sans": 800,
+    "façon": 810,
+    "casser": 780,
+    "papo": 800,
+    "gbé": 820,
+    "babi": 880,
+    "abidjan": 920,
+    "yopougon": 900,
+    "cocody": 900,
+    "koumassi": 880,
+    "treichville": 880,
+    "adjamé": 880,
+    "marcory": 880
+  },
+  "bigrams": {
+    "ya": {
+      "fohi": 990
+    },
+    "chap": {
+      "chap": 990
+    },
+    "mon": {
+      "môgô": 940,
+      "djossi": 910,
+      "gbonhi": 860
+    },
+    "trop": {
+      "d'enjaillement": 960,
+      "kpata": 900
+    },
+    "c'est": {
+      "kpata": 930,
+      "le drap": 920,
+      "doux": 900,
+      "bété-bété": 880
+    },
+    "manger": {
+      "garba": 950,
+      "alloco": 930,
+      "foutou": 920,
+      "attiéké": 940
+    },
+    "sans": {
+      "façon": 950
+    },
+    "faut": {
+      "sciencer": 960,
+      "faroter": 890
+    },
+    "calme": {
+      "déh": 940
+    }
+  },
+  "trigrams": {
+    "il faut": {
+      "sciencer": 980,
+      "travailler": 890
+    },
+    "on est": {
+      "ensemble": 990,
+      "enjaillement": 920
+    },
+    "y a": {
+      "fohi": 990,
+      "pas drap": 950
+    },
+    "c'est trop": {
+      "kpata": 970,
+      "doux": 940
+    }
+  }
+}

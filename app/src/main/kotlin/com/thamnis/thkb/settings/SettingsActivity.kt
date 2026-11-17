@@ -172,6 +172,52 @@ class SettingsActivity : ComponentActivity() {
                         HorizontalDivider()
 
                         Text(
+                            text = "Suggestions & Autocomplete",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+
+                        SettingSwitchRow(
+                            label = "Show text suggestions strip",
+                            checked = settings.suggestionsEnabled,
+                            onCheckedChange = { preferences.setSuggestionsEnabled(it) },
+                        )
+
+                        if (settings.suggestionsEnabled) {
+                            Text(
+                                text = "Autocomplete Mode",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+
+                            listOf(
+                                KbSettings.AUTOCOMPLETE_MODE_ADVANCED to "Advanced Autocomplete (Sweet-spot context, typo tolerance & next-word)",
+                                KbSettings.AUTOCOMPLETE_MODE_STANDARD to "Standard Autocomplete (Exact dictionary prefix match)",
+                            ).forEach { (mode, label) ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { preferences.setAutocompleteMode(mode) }
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    RadioButton(
+                                        selected = settings.autocompleteMode == mode,
+                                        onClick = { preferences.setAutocompleteMode(mode) },
+                                    )
+                                    Text(text = label, style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+
+                            SettingSwitchRow(
+                                label = "Ivorian French & Nouchi vocabulary (fr_CI)",
+                                checked = settings.ivorianFrenchEnabled,
+                                onCheckedChange = { preferences.setIvorianFrenchEnabled(it) },
+                            )
+                        }
+
+                        HorizontalDivider()
+
+                        Text(
                             text = "Delete & Long-Press Gestures",
                             style = MaterialTheme.typography.titleMedium,
                         )

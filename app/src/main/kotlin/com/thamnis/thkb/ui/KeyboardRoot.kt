@@ -147,6 +147,7 @@ import com.thamnis.thkb.data.ClipboardEntry
 import com.thamnis.thkb.data.EmojiSection
 import com.thamnis.thkb.data.KaomojiItem
 import com.thamnis.thkb.data.TodoTask
+import com.thamnis.thkb.engine.SuggestionCandidate
 import com.thamnis.thkb.ime.AccentPopupState
 import com.thamnis.thkb.ime.InputContext
 import com.thamnis.thkb.ime.KeyPreviewState
@@ -227,6 +228,8 @@ fun KeyboardRoot(
     onOpenSettings: () -> Unit,
     onUndo: () -> Unit = {},
     onRedo: () -> Unit = {},
+    suggestions: List<SuggestionCandidate> = emptyList(),
+    onSelectSuggestion: (String) -> Unit = {},
 ) {
     var shiftState by remember(inputSessionKey, autoCapOnOpen) {
         mutableStateOf(if (autoCapOnOpen) ShiftState.ONCE else ShiftState.OFF)
@@ -320,6 +323,8 @@ fun KeyboardRoot(
                                 onKeyFeedback()
                                 onOpenSettings()
                             },
+                            suggestions = suggestions,
+                            onSelectSuggestion = onSelectSuggestion,
                             onUndo = onUndo,
                             onRedo = onRedo,
                         )
@@ -744,6 +749,8 @@ private fun ToolbarRow(
     panelMode: PanelMode,
     canResize: Boolean,
     isExpanded: Boolean,
+    suggestions: List<SuggestionCandidate>,
+    onSelectSuggestion: (String) -> Unit,
     onResizeDeltaDp: (Float) -> Unit,
     onToggleExpand: () -> Unit,
     onToggleEmoji: () -> Unit,
@@ -755,6 +762,15 @@ private fun ToolbarRow(
 ) {
     val density = LocalDensity.current
     val latestOnResize by rememberUpdatedState(onResizeDeltaDp)
+    var showToolsOverride by remember { mutableStateOf(false) }
+
+    LaunchedEffect(suggestions) {
+        if (suggestions.isNotEmpty()) {
+            showToolsOverride = false
+        }
+    }
+
+    val isSuggestionMode = panelMode == PanelMode.KEYBOARD && suggestions.isNotEmpty() && !showToolsOverride
 
     Box(
         modifier = Modifier
@@ -787,58 +803,115 @@ private fun ToolbarRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(44.dp)
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
+            if (isSuggestionMode) {
+                // Suggestion Strip view
                 ToolbarIconButton(
-                    icon = if (panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI) {
-                        Icons.Outlined.Keyboard
-                    } else {
-                        Icons.Outlined.EmojiEmotions
-                    },
-                    contentDescription = "Emoji",
-                    active = panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI,
-                    onClick = onToggleEmoji,
+                    icon = Icons.AutoMirrored.Outlined.ArrowForward,
+                    contentDescription = "Show Tools",
+                    active = false,
+                    onClick = { showToolsOverride = true },
                 )
-                ToolbarIconButton(
-                    icon = if (panelMode == PanelMode.CLIPBOARD) {
-                        Icons.Outlined.Keyboard
-                    } else {
-                        Icons.Outlined.ContentPaste
-                    },
-                    contentDescription = "Clipboard",
-                    active = panelMode == PanelMode.CLIPBOARD,
-                    onClick = onToggleClipboard,
-                )
-                ToolbarIconButton(
-                    icon = if (panelMode == PanelMode.TODO) {
-                        Icons.Outlined.Keyboard
-                    } else {
-                        Icons.Outlined.Checklist
-                    },
-                    contentDescription = "Todo List",
-                    active = panelMode == PanelMode.TODO,
-                    onClick = onToggleTodo,
-                )
-                if (canResize) {
+
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    suggestions.take(3).forEachIndexed { idx, candidate ->
+                        if (idx > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .width(1.dp)
+                                    .height(14.dp)
+                                    .background(HintTextColor.copy(alpha = 0.25f)),
+                            )
+                        }
+                        val isCenter = (suggestions.size == 3 && idx == 1) || (suggestions.size < 3 && idx == 0)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onSelectSuggestion(candidate.word) }
+                                .padding(horizontal = 3.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = candidate.word,
+                                color = if (isCenter) Color.White else Color(0xFFDDDDDD),
+                                fontSize = if (isCenter) 15.sp else 14.sp,
+                                fontWeight = if (isCenter) FontWeight.SemiBold else FontWeight.Normal,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (panelMode == PanelMode.KEYBOARD && suggestions.isNotEmpty()) {
+                        ToolbarIconButton(
+                            icon = Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = "Show Suggestions",
+                            active = false,
+                            onClick = { showToolsOverride = false },
+                        )
+                    }
                     ToolbarIconButton(
-                        icon = if (isExpanded) Icons.Outlined.KeyboardArrowDown else Icons.Outlined.KeyboardArrowUp,
-                        contentDescription = "Resize",
-                        active = isExpanded,
-                        onClick = onToggleExpand,
+                        icon = if (panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI) {
+                            Icons.Outlined.Keyboard
+                        } else {
+                            Icons.Outlined.EmojiEmotions
+                        },
+                        contentDescription = "Emoji",
+                        active = panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI,
+                        onClick = onToggleEmoji,
+                    )
+                    ToolbarIconButton(
+                        icon = if (panelMode == PanelMode.CLIPBOARD) {
+                            Icons.Outlined.Keyboard
+                        } else {
+                            Icons.Outlined.ContentPaste
+                        },
+                        contentDescription = "Clipboard",
+                        active = panelMode == PanelMode.CLIPBOARD,
+                        onClick = onToggleClipboard,
+                    )
+                    ToolbarIconButton(
+                        icon = if (panelMode == PanelMode.TODO) {
+                            Icons.Outlined.Keyboard
+                        } else {
+                            Icons.Outlined.Checklist
+                        },
+                        contentDescription = "Todo List",
+                        active = panelMode == PanelMode.TODO,
+                        onClick = onToggleTodo,
+                    )
+                    if (canResize) {
+                        ToolbarIconButton(
+                            icon = if (isExpanded) Icons.Outlined.KeyboardArrowDown else Icons.Outlined.KeyboardArrowUp,
+                            contentDescription = "Resize",
+                            active = isExpanded,
+                            onClick = onToggleExpand,
+                        )
+                    }
+                    ToolbarIconButton(
+                        icon = Icons.Outlined.Settings,
+                        contentDescription = "Settings",
+                        active = false,
+                        onClick = onOpenSettings,
                     )
                 }
-                ToolbarIconButton(
-                    icon = Icons.Outlined.Settings,
-                    contentDescription = "Settings",
-                    active = false,
-                    onClick = onOpenSettings,
-                )
             }
 
             // Dedicated Undo / Redo Toolbar Pill (unlabeled with vertical bar divider)

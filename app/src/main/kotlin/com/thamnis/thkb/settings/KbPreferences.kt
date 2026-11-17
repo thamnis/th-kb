@@ -25,12 +25,18 @@ data class KbSettings(
     val emojiGridColumns: Int = DEFAULT_EMOJI_GRID_COLUMNS,
     val favoriteItems: Set<String> = DEFAULT_FAVORITES,
     val recentEmojis: List<String> = emptyList(),
+    val suggestionsEnabled: Boolean = true,
+    val autocompleteMode: String = AUTOCOMPLETE_MODE_ADVANCED,
+    val ivorianFrenchEnabled: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_LAYOUT_ID = "qwerty_en"
         const val DEFAULT_LONG_PRESS_DELAY_MS = 450L
         const val DEFAULT_RAPID_DELETE_DELAY_MS = 580L
         const val DEFAULT_EMOJI_GRID_COLUMNS = 8
+        const val AUTOCOMPLETE_MODE_STANDARD = "autocomplete"
+        const val AUTOCOMPLETE_MODE_ADVANCED = "advanced_autocomplete"
+        const val AUTOCOMPLETE_MODE_OFF = "off"
         val DEFAULT_FAVORITES = setOf("😂", "❤️", "👍", "🔥", "🙏", "(^_^)", "¯\\_(ツ)_/¯")
     }
 }
@@ -100,6 +106,21 @@ class KbPreferences(context: Context) {
         _settings.value = readSettings()
     }
 
+    fun setSuggestionsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SUGGESTIONS_ENABLED, enabled).apply()
+        _settings.value = readSettings()
+    }
+
+    fun setAutocompleteMode(mode: String) {
+        prefs.edit().putString(KEY_AUTOCOMPLETE_MODE, mode).apply()
+        _settings.value = readSettings()
+    }
+
+    fun setIvorianFrenchEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_IVORIAN_FRENCH_ENABLED, enabled).apply()
+        _settings.value = readSettings()
+    }
+
     fun toggleFavoriteItem(item: String) {
         val current = _settings.value.favoriteItems.toMutableSet()
         if (!current.add(item)) {
@@ -138,6 +159,9 @@ class KbPreferences(context: Context) {
             .putInt(KEY_EMOJI_GRID_COLUMNS, restored.emojiGridColumns)
             .putStringSet(KEY_FAVORITES, restored.favoriteItems)
             .putString(KEY_RECENT_EMOJIS, restored.recentEmojis.joinToString("\u001F"))
+            .putBoolean(KEY_SUGGESTIONS_ENABLED, restored.suggestionsEnabled)
+            .putString(KEY_AUTOCOMPLETE_MODE, restored.autocompleteMode)
+            .putBoolean(KEY_IVORIAN_FRENCH_ENABLED, restored.ivorianFrenchEnabled)
             .apply()
         _settings.value = readSettings()
         pinnedClips
@@ -158,6 +182,9 @@ class KbPreferences(context: Context) {
             .putInt(KEY_EMOJI_GRID_COLUMNS, restored.emojiGridColumns)
             .putStringSet(KEY_FAVORITES, restored.favoriteItems)
             .putString(KEY_RECENT_EMOJIS, restored.recentEmojis.joinToString("\u001F"))
+            .putBoolean(KEY_SUGGESTIONS_ENABLED, restored.suggestionsEnabled)
+            .putString(KEY_AUTOCOMPLETE_MODE, restored.autocompleteMode)
+            .putBoolean(KEY_IVORIAN_FRENCH_ENABLED, restored.ivorianFrenchEnabled)
             .apply()
         _settings.value = readSettings()
         pinnedClips to todoTasks
@@ -181,6 +208,10 @@ class KbPreferences(context: Context) {
             ?.split("\u001F")
             ?.filter { it.isNotEmpty() }
             .orEmpty(),
+        suggestionsEnabled = prefs.getBoolean(KEY_SUGGESTIONS_ENABLED, true),
+        autocompleteMode = prefs.getString(KEY_AUTOCOMPLETE_MODE, KbSettings.AUTOCOMPLETE_MODE_ADVANCED)
+            ?: KbSettings.AUTOCOMPLETE_MODE_ADVANCED,
+        ivorianFrenchEnabled = prefs.getBoolean(KEY_IVORIAN_FRENCH_ENABLED, true),
     )
 
     companion object {
@@ -197,6 +228,9 @@ class KbPreferences(context: Context) {
         private const val KEY_EMOJI_GRID_COLUMNS = "emoji_grid_columns"
         private const val KEY_FAVORITES = "favorite_items"
         private const val KEY_RECENT_EMOJIS = "recent_emojis"
+        private const val KEY_SUGGESTIONS_ENABLED = "suggestions_enabled"
+        private const val KEY_AUTOCOMPLETE_MODE = "autocomplete_mode"
+        private const val KEY_IVORIAN_FRENCH_ENABLED = "ivorian_french_enabled"
     }
 }
 
@@ -241,6 +275,9 @@ object KbBackupCodec {
             appendLine("  \"deleteGesturesEnabled\": ${settings.deleteGesturesEnabled},")
             appendLine("  \"resetForwardDeleteOnChar\": ${settings.resetForwardDeleteOnChar},")
             appendLine("  \"emojiGridColumns\": ${settings.emojiGridColumns},")
+            appendLine("  \"suggestionsEnabled\": ${settings.suggestionsEnabled},")
+            appendLine("  \"autocompleteMode\": ${esc(settings.autocompleteMode)},")
+            appendLine("  \"ivorianFrenchEnabled\": ${settings.ivorianFrenchEnabled},")
             appendLine("  \"favoriteItems\": ${arr(settings.favoriteItems)},")
             appendLine("  \"recentEmojis\": ${arr(settings.recentEmojis)},")
             appendLine("  \"pinnedClips\": ${arr(pinnedClips.filter { it.pinned }.map { it.text })},")
@@ -345,6 +382,9 @@ object KbBackupCodec {
                 .coerceIn(5, 10),
             favoriteItems = favorites,
             recentEmojis = recents,
+            suggestionsEnabled = boolVal("suggestionsEnabled", true),
+            autocompleteMode = stringVal("autocompleteMode", KbSettings.AUTOCOMPLETE_MODE_ADVANCED),
+            ivorianFrenchEnabled = boolVal("ivorianFrenchEnabled", true),
         )
         return DecodedBackup(settings, pinnedClips, todoTasks)
     }

@@ -33,7 +33,10 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.thamnis.thkb.data.AssetRepository
 import com.thamnis.thkb.data.ClipboardHistoryManager
 import com.thamnis.thkb.data.TodoListManager
+import com.thamnis.thkb.engine.SuggestionCandidate
+import com.thamnis.thkb.engine.SuggestionEngine
 import com.thamnis.thkb.settings.KbPreferences
+import com.thamnis.thkb.settings.KbSettings
 import com.thamnis.thkb.settings.SettingsActivity
 import com.thamnis.thkb.ui.KeyboardRoot
 
@@ -57,6 +60,8 @@ class ThKbInputMethodService :
     private lateinit var assets: AssetRepository
     private lateinit var clipboardHistory: ClipboardHistoryManager
     private lateinit var todoManager: TodoListManager
+    private lateinit var suggestionEngine: SuggestionEngine
+    private var suggestions by mutableStateOf<List<SuggestionCandidate>>(emptyList())
     private var audioManager: AudioManager? = null
     private var inputComposeView: ComposeView? = null
 
@@ -75,6 +80,7 @@ class ThKbInputMethodService :
         assets = AssetRepository(this)
         clipboardHistory = ClipboardHistoryManager(this)
         todoManager = TodoListManager(this)
+        suggestionEngine = SuggestionEngine(this)
         audioManager = getSystemService(AUDIO_SERVICE) as? AudioManager
     }
 
@@ -157,20 +163,40 @@ class ThKbInputMethodService :
                             sound = settings.soundEnabled,
                         )
                     },
+                    suggestions = suggestions,
+                    onSelectSuggestion = { candidateWord ->
+                        val ic = currentInputConnection ?: return@KeyboardRoot
+                        val before = ic.getTextBeforeCursor(96, 0)
+                        val (_, prefix) = suggestionEngine.extractContext(before)
+                        if (prefix.isNotEmpty()) {
+                            ic.deleteSurroundingText(prefix.length, 0)
+                        }
+                        ic.commitText("$candidateWord ", 1)
+                        playFeedback(
+                            haptics = settings.hapticsEnabled,
+                            sound = settings.soundEnabled,
+                        )
+                        refreshSuggestions(effectiveLayoutId, settings)
+                    },
                     onCommitText = { text ->
                         commitTextSafe(text)
+                        refreshSuggestions(effectiveLayoutId, settings)
                     },
                     onBackspace = {
                         performBackspace()
+                        refreshSuggestions(effectiveLayoutId, settings)
                     },
                     onForwardDelete = {
                         performForwardDelete()
+                        refreshSuggestions(effectiveLayoutId, settings)
                     },
                     onDeleteWord = { forward ->
                         performDeleteWord(forward)
+                        refreshSuggestions(effectiveLayoutId, settings)
                     },
                     onDeleteParagraph = { forward ->
                         performDeleteParagraph(forward)
+                        refreshSuggestions(effectiveLayoutId, settings)
                     },
                     onSendKeyEvent = { keyCode ->
                         sendDownUpKeyEvents(keyCode)
@@ -221,7 +247,49 @@ class ThKbInputMethodService :
         returnAction = KeyboardStateLogic.resolveReturnAction(imeOptions)
         activeEditorAction = imeOptions and EditorInfo.IME_MASK_ACTION
         clipboardHistory.syncFromSystemClipboard()
+        val settings = preferences.settings.value
+        val effectiveLayoutId = subtypeLayoutOverride ?: settings.layoutId
+        refreshSuggestions(effectiveLayoutId, settings)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+    }
+
+    override fun onUpdateSelection(
+        oldSelStart: Int,
+        oldSelEnd: Int,
+        newSelStart: Int,
+        newSelEnd: Int,
+        candidatesStart: Int,
+        candidatesEnd: Int,
+    ) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        val settings = preferences.settings.value
+        val effectiveLayoutId = subtypeLayoutOverride ?: settings.layoutId
+        refreshSuggestions(effectiveLayoutId, settings)
+    }
+
+    private fun refreshSuggestions(effectiveLayoutId: String, settings: KbSettings) {
+        if (!settings.suggestionsEnabled || settings.autocompleteMode == KbSettings.AUTOCOMPLETE_MODE_OFF) {
+            if (suggestions.isNotEmpty()) suggestions = emptyList()
+            return
+        }
+        if (inputContext == InputContext.PASSWORD || inputContext == InputContext.TERMINAL || inputContext == InputContext.NUMBER) {
+            if (suggestions.isNotEmpty()) suggestions = emptyList()
+            return
+        }
+        val ic = currentInputConnection ?: run {
+            if (suggestions.isNotEmpty()) suggestions = emptyList()
+            return
+        }
+        val before = ic.getTextBeforeCursor(96, 0)
+        val (ctxWords, prefix) = suggestionEngine.extractContext(before)
+        val dict = suggestionEngine.getActiveDictionary(effectiveLayoutId, settings.ivorianFrenchEnabled)
+        suggestions = suggestionEngine.querySuggestions(
+            dict = dict,
+            contextWords = ctxWords,
+            prefix = prefix,
+            mode = settings.autocompleteMode,
+            maxResults = 3,
+        )
     }
 
     override fun onComputeInsets(outInsets: Insets?) {
