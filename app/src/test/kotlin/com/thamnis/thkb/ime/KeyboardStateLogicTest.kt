@@ -74,7 +74,7 @@ class KeyboardStateLogicTest {
         assertTrue(KeyboardStateLogic.shouldAutoCapOnOpen(InputContext.NORMAL, true))
         assertFalse(KeyboardStateLogic.shouldAutoCapOnOpen(InputContext.PASSWORD, true))
         assertFalse(KeyboardStateLogic.shouldAutoCapOnOpen(InputContext.URL, true))
-        assertEquals(KeyboardLayer.SYMBOLS, KeyboardStateLogic.initialLayerForContext(InputContext.NUMBER))
+        assertEquals(KeyboardLayer.NUMERIC, KeyboardStateLogic.initialLayerForContext(InputContext.NUMBER))
         assertEquals(KeyboardLayer.ALPHA, KeyboardStateLogic.initialLayerForContext(InputContext.NORMAL))
     }
 

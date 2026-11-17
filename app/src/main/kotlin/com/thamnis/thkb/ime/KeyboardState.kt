@@ -14,6 +14,7 @@ enum class KeyboardLayer {
     ALPHA,
     SYMBOLS,
     SYMBOLS_MORE,
+    NUMERIC,
 }
 
 enum class PanelMode {
@@ -87,6 +88,7 @@ object KeyboardStateLogic {
             "SYMBOLS" -> "?123"
             "MORE_SYMBOLS" -> "=\\<"
             "ALPHA" -> "ABC"
+            "NUMERIC" -> "123"
             "EMOJI_KEY" -> "☺"
             "SPACE" -> "EN • FR"
             "RETURN" -> returnAction.label
@@ -150,11 +152,7 @@ object KeyboardStateLogic {
             klass == InputType.TYPE_CLASS_PHONE ||
             klass == InputType.TYPE_CLASS_DATETIME
         ) {
-            return if (variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD) {
-                InputContext.PASSWORD
-            } else {
-                InputContext.NUMBER
-            }
+            return InputContext.NUMBER
         }
 
         if (klass == InputType.TYPE_CLASS_TEXT) {
@@ -190,7 +188,7 @@ object KeyboardStateLogic {
     }
 
     fun initialLayerForContext(context: InputContext): KeyboardLayer =
-        if (context == InputContext.NUMBER) KeyboardLayer.SYMBOLS else KeyboardLayer.ALPHA
+        if (context == InputContext.NUMBER) KeyboardLayer.NUMERIC else KeyboardLayer.ALPHA
 
     fun wordDeleteCountBefore(before: String): Int {
         if (before.isEmpty()) return 0

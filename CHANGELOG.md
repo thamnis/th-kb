@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0-alpha.1] - 2026-11-17
+## [0.4.0-alpha.1] - 2026-11-17
+
+### Added
+- **Dedicated Numeric-Only Layout (Numpad)**: Added 3x4 tactile keypad (`layouts/numeric.json`) with phone keypad layout (`1-9`, `0`), mathematical operators (`+`, `-`, `*`, `/`, `=`, `%`), punctuation (`.`, `,`), and long-press variants (scientific notation, parentheses, exponentiation). Automatically selected for numeric input fields and manually togglable.
+- **Glide-Up Mode Toggle for Numeric Numpad**: Gliding up on the mode button (`?123` / `ABC`) instantly toggles between alphanumeric/symbol layers and the dedicated numeric keypad, complete with visual corner hints (`123` on mode button in alpha/symbol mode, `?#` in numeric mode).
+- **Compact Undo & Redo Toolbar Widget**: Sleek, unlabelled pill widget with vertical bar divider (`↺ | ↻`) in the top toolbar, spring animations on touch, and direct `performContextMenuAction` undo/redo dispatch.
+- **Timestamped JSON Backup & Restore**: Added one-tap "Export Settings & History" generating ISO timestamped files (`thkb_backup_yyyyMMdd_HHmmss.json`) covering settings, clipboard items, favorites, and to-do tasks, with full validation and one-tap restore in Settings.
+
+### Changed
+- **Roadmap Organization**: Backlogged Google Tasks sync for To-Do List and Media Controller to `v1.2` release milestone in `ROADMAP.md`.
+- **Numeric Variation Field Scoping**: Refined input context detection so text URIs and numeric password variations don't collide.
 
 ### Added
 - **Built-in Animated Todo List Panel**: Accessible directly from the keyboard toolbar with persistent JSON storage (`TodoListManager`), task completion progress bar, animated task reordering (`animateItem()`), strike-through sweep on completion, one-tap text insertion into active apps, and delete/clear actions.

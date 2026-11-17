@@ -40,7 +40,8 @@
 
 - [ ] Shortcuts to first/last characters (Home/End)
 - [ ] Move cursor/selection by letter, word, phrase, and paragraph
-- [ ] **Undo & Redo** (in-memory edit stack + `InputConnection` text snapshot restoration)
+- [ ] **Google Tasks synchronization** (link built-in Todo list panel to Google Tasks via OAuth 2.0 with offline-first bi-directional sync)
+- [ ] **Media control & Music lyrics** (system media playback controls + live/searchable song lyrics insertion)
 - [ ] **Rich media copy-pasting** (clipboard image/GIF items committed via `InputConnectionCompat.commitContent()`)
 - [ ] **GIFs & Stickers** (`InputConnectionCompat.commitContent()`)
 - [ ] **Emoji search** (keyword search inside the Emoji & Kaomoji panel backed by `rust-core`)
@@ -63,6 +64,4 @@
 - [ ] **Fancy text generator** (live Unicode font styles: serif, script, fraktur, monospace, circled, small caps)
 - [ ] **Built-in Note taker** (quick scratchpad notes panel inside the keyboard)
 - [x] **Built-in Animated Todo list** (checkable task list panel inside keyboard with strike-through sweep, progress bar, paste-into-text, and smooth item animations)
-- [ ] **Google Tasks synchronization** (link built-in Todo list panel to Google Tasks via OAuth 2.0 with offline-first bi-directional sync)
 - [ ] **Currency converter** (inline currency conversion calculator in the keyboard utility bar)
-- [ ] **Media control & Music lyrics** (system media playback controls + live/searchable song lyrics insertion)

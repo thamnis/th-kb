@@ -249,13 +249,16 @@ class SettingsActivity : ComponentActivity() {
                             style = MaterialTheme.typography.titleMedium,
                         )
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
                             Button(
                                 onClick = {
                                     val timestamp = java.time.LocalDateTime.now().format(
-                                        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"),
+                                        java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"),
                                     )
-                                    exportLauncher.launch("th-kb-backup-$timestamp.json")
+                                    exportLauncher.launch("thkb_backup_$timestamp.json")
                                 },
                             ) {
                                 Text("Export JSON")

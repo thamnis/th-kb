@@ -119,7 +119,7 @@ Tap the **Checklist** icon in the top toolbar to access your quick task manager:
 ## 10. Backup & Restore (JSON) & Key Preview
 
 - **Key-Press Popup Preview:** Displays a tactile Gboard-style character preview bubble above pressed keys (`Show key-press popup preview` in Settings).
-- **JSON Backup & Restore:** In **th-kb Settings → Backup & Restore (JSON)**, tap **Export JSON** to save all your layout preferences, gesture timings, favorite emojis/kaomojis, recent emojis, pinned clipboard items, and todo tasks to a timestamped `.json` file (`th-kb-backup-yyyy-MM-dd_HH-mm-ss.json`), or tap **Import JSON** to restore them on any device.
+- **JSON Backup & Restore:** In **th-kb Settings → Backup & Restore (JSON)**, tap **Export JSON** to save all your layout preferences, gesture timings, favorite emojis/kaomojis, recent emojis, pinned clipboard items, and todo tasks to a timestamped `.json` file (`thkb_backup_yyyyMMdd_HHmmss.json`), or tap **Import JSON** to restore them on any device.
 
 ---
 
@@ -128,9 +128,34 @@ Tap the **Checklist** icon in the top toolbar to access your quick task manager:
 All interactions across `th-kb` feature tactile, 60fps Compose animations:
 - **Keypress Spring Bounce:** Every keycap features a tactile depression bounce (`scale(0.93f)`) and instant background color transition on touch.
 - **Key Preview Bubble Pop-in:** Character preview bubble pops up above keys with a bouncy spring animation (`scaleIn(0.65f) + fadeIn()`) and pops out cleanly on release.
-- **Accent Variants Popup:** Floating diacritics menu pops in with a spring bounce; sliding your finger across variants interactively enlarges (`scale(1.15f)`) and highlights the selected character.
+- **Accent Variants Popup:** Floating diacritics menu pops in with a spring bounce; sliding your finger across variants features a fluid spring-gliding selection bubble passing continuously beneath the finger (`animateFloatAsState`).
 - **Backspace 180° Flip:** Gliding down on Backspace smoothly flips the keycap icon 180 degrees (`rotationY`) to transition into Forward Delete (`⌦`).
 - **Shift Pulse & CAPS LOCK Underline:** Tapping Shift pulses the arrow icon with a bouncy spring, and double-tapping into CAPS LOCK smoothly fades and slides in the underline bar.
 - **Spacebar Cursor Glide Indicator:** Gliding across the Spacebar expands the keycap (`scale(1.03f)`) and displays glowing cursor glide arrows (`‹   EN • FR   ›`).
 - **Return Action Morph:** Return/action key morphs between Search, Send, Next, Done, and Return with animated icon scaling and crossfade.
-- **Toolbar & Panel Transitions:** Toolbar mode buttons animate with pill background transitions, while switching between Keyboard, Emoji, Clipboard, and Todo panels is powered by fluid crossfades and subtle scale transitions.
+- **Toolbar & Panel Transitions:** Toolbar mode buttons animate with pill background transitions, while switching between Keyboard, Emoji, Clipboard, and Todo panels is powered by fluid vertical sheet slide and scale transitions.
+
+---
+
+## 12. Dedicated Numeric-Only Mode (Numpad)
+
+- **Automatic Activation:** When focusing numeric fields (`TYPE_CLASS_NUMBER`, `TYPE_CLASS_PHONE`, `TYPE_CLASS_DATETIME`, numeric PIN/OTP fields), `th-kb` automatically opens a dedicated large **3×4 Numpad**.
+- **Tactile 4×4 Layout:**
+  - Classic 3×3 digit block (`1`–`9`) with centered `0` and decimal `.` below.
+  - Dedicated operational keys: `BACKSPACE` (`⌫`) in the upper-right thumb position, subtraction `-`, addition `+`, and dynamic `RETURN` action button in the lower-right.
+  - Generous key sizing (`56dp` row height) with large `26sp` bold numbers for rapid, error-free dialing and calculations.
+- **Long-Press Variant Accents:**
+  - Long-press `0`: reveals `+` (international phone prefix), `*`, `#`, and superscript `⁰`.
+  - Long-press `.`: reveals `,`, `:`, `;`, and `/`.
+  - Long-press `-`: reveals `_`, `–`, and `~`.
+  - Long-press `+`: reveals `*`, `=`, `%`, and `÷`.
+- **Instant ABC Switch:** Tap **`ABC`** in the lower-left corner to return to the full alphanumeric QWERTY/AZERTY keyboard at any time.
+
+---
+
+## 13. Undo & Redo Toolbar Widget (`undo/redo`)
+
+- **Dedicated Toolbar Widget:** A compact pill widget explicitly titled **`undo/redo`** is built directly into the keyboard's top toolbar:
+  - **`↺` Undo:** Reverts your latest edit, text commit, or deletion. Dispatches standard `android.R.id.undo` context action with universal `Ctrl+Z` fallback.
+  - **`↻` Redo:** Reapplies the previously reverted change. Dispatches `android.R.id.redo` with universal `Ctrl+Shift+Z` / `Ctrl+Y` fallback.
+- **Instant Touch Feedback:** Each button features tactile spring bounce animations and haptic key feedback.

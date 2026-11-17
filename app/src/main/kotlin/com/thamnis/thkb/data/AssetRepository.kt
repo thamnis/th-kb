@@ -25,6 +25,7 @@ class AssetRepository(private val context: Context) {
     fun loadLayout(layoutId: String): List<List<String>> {
         layoutCache[layoutId]?.let { return it }
         val fileName = when (layoutId) {
+            "numeric" -> "layouts/numeric.json"
             "azerty_fr" -> "layouts/azerty_fr.json"
             "symbols" -> "layouts/symbols.json"
             "symbols_more" -> "layouts/symbols_more.json"

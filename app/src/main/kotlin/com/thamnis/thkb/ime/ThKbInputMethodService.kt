@@ -184,6 +184,12 @@ class ThKbInputMethodService :
                     onPaste = {
                         currentInputConnection?.performContextMenuAction(android.R.id.paste)
                     },
+                    onUndo = {
+                        performUndoAction()
+                    },
+                    onRedo = {
+                        performRedoAction()
+                    },
                     onMoveCursor = { deltaSteps ->
                         moveCursor(deltaSteps)
                     },
@@ -399,6 +405,102 @@ class ThKbInputMethodService :
                 0,
             ),
         )
+    }
+
+    private fun performUndoAction() {
+        val ic = currentInputConnection ?: return
+        playFeedback(
+            haptics = preferences.settings.value.hapticsEnabled,
+            sound = preferences.settings.value.soundEnabled,
+        )
+        val handled = ic.performContextMenuAction(android.R.id.undo)
+        if (!handled) {
+            val now = SystemClock.uptimeMillis()
+            ic.sendKeyEvent(
+                KeyEvent(
+                    now,
+                    now,
+                    KeyEvent.ACTION_DOWN,
+                    KeyEvent.KEYCODE_Z,
+                    0,
+                    KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON,
+                    KeyCharacterMap.VIRTUAL_KEYBOARD,
+                    0,
+                ),
+            )
+            ic.sendKeyEvent(
+                KeyEvent(
+                    now,
+                    now,
+                    KeyEvent.ACTION_UP,
+                    KeyEvent.KEYCODE_Z,
+                    0,
+                    KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON,
+                    KeyCharacterMap.VIRTUAL_KEYBOARD,
+                    0,
+                ),
+            )
+        }
+    }
+
+    private fun performRedoAction() {
+        val ic = currentInputConnection ?: return
+        playFeedback(
+            haptics = preferences.settings.value.hapticsEnabled,
+            sound = preferences.settings.value.soundEnabled,
+        )
+        val handled = ic.performContextMenuAction(android.R.id.redo)
+        if (!handled) {
+            val now = SystemClock.uptimeMillis()
+            ic.sendKeyEvent(
+                KeyEvent(
+                    now,
+                    now,
+                    KeyEvent.ACTION_DOWN,
+                    KeyEvent.KEYCODE_Z,
+                    0,
+                    KeyEvent.META_CTRL_ON or KeyEvent.META_SHIFT_ON,
+                    KeyCharacterMap.VIRTUAL_KEYBOARD,
+                    0,
+                ),
+            )
+            ic.sendKeyEvent(
+                KeyEvent(
+                    now,
+                    now,
+                    KeyEvent.ACTION_UP,
+                    KeyEvent.KEYCODE_Z,
+                    0,
+                    KeyEvent.META_CTRL_ON or KeyEvent.META_SHIFT_ON,
+                    KeyCharacterMap.VIRTUAL_KEYBOARD,
+                    0,
+                ),
+            )
+            ic.sendKeyEvent(
+                KeyEvent(
+                    now,
+                    now,
+                    KeyEvent.ACTION_DOWN,
+                    KeyEvent.KEYCODE_Y,
+                    0,
+                    KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON,
+                    KeyCharacterMap.VIRTUAL_KEYBOARD,
+                    0,
+                ),
+            )
+            ic.sendKeyEvent(
+                KeyEvent(
+                    now,
+                    now,
+                    KeyEvent.ACTION_UP,
+                    KeyEvent.KEYCODE_Y,
+                    0,
+                    KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON,
+                    KeyCharacterMap.VIRTUAL_KEYBOARD,
+                    0,
+                ),
+            )
+        }
     }
 
     private fun performReturnAction() {

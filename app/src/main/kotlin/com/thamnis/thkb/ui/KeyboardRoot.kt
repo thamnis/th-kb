@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -57,6 +58,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.Backspace
+import androidx.compose.material.icons.automirrored.outlined.Redo
+import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.automirrored.outlined.KeyboardReturn
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.filled.CheckCircle
@@ -222,6 +225,8 @@ fun KeyboardRoot(
     onMoveCursorVertical: (Int) -> Unit = {},
     shouldAutoCapNow: () -> Boolean = { false },
     onOpenSettings: () -> Unit,
+    onUndo: () -> Unit = {},
+    onRedo: () -> Unit = {},
 ) {
     var shiftState by remember(inputSessionKey, autoCapOnOpen) {
         mutableStateOf(if (autoCapOnOpen) ShiftState.ONCE else ShiftState.OFF)
@@ -230,6 +235,7 @@ fun KeyboardRoot(
     var layer by remember(inputSessionKey, inputContext) {
         mutableStateOf(KeyboardStateLogic.initialLayerForContext(inputContext))
     }
+    var lastNonNumericLayer by remember(inputSessionKey) { mutableStateOf(KeyboardLayer.ALPHA) }
     var panelMode by remember(inputSessionKey) { mutableStateOf(PanelMode.KEYBOARD) }
     var accentPopup by remember(inputSessionKey) { mutableStateOf<AccentPopupState?>(null) }
     var keyPreview by remember(inputSessionKey) { mutableStateOf<KeyPreviewState?>(null) }
@@ -248,6 +254,7 @@ fun KeyboardRoot(
         KeyboardLayer.ALPHA -> layoutId
         KeyboardLayer.SYMBOLS -> "symbols"
         KeyboardLayer.SYMBOLS_MORE -> "symbols_more"
+        KeyboardLayer.NUMERIC -> "numeric"
     }
     val rawRows = remember(activeLayoutId) { assets.loadLayout(activeLayoutId) }
     val rows = remember(rawRows, layer, inputContext) {
@@ -313,6 +320,8 @@ fun KeyboardRoot(
                                 onKeyFeedback()
                                 onOpenSettings()
                             },
+                            onUndo = onUndo,
+                            onRedo = onRedo,
                         )
                     }
 
@@ -468,9 +477,19 @@ fun KeyboardRoot(
                                                 shiftState = ShiftState.ONCE
                                             }
                                         }
-                                        "SYMBOLS" -> layer = KeyboardLayer.SYMBOLS
-                                        "MORE_SYMBOLS" -> layer = KeyboardLayer.SYMBOLS_MORE
-                                        "ALPHA" -> layer = KeyboardLayer.ALPHA
+                                        "SYMBOLS" -> {
+                                            layer = KeyboardLayer.SYMBOLS
+                                            lastNonNumericLayer = KeyboardLayer.SYMBOLS
+                                        }
+                                        "MORE_SYMBOLS" -> {
+                                            layer = KeyboardLayer.SYMBOLS_MORE
+                                            lastNonNumericLayer = KeyboardLayer.SYMBOLS_MORE
+                                        }
+                                        "ALPHA" -> {
+                                            layer = KeyboardLayer.ALPHA
+                                            lastNonNumericLayer = KeyboardLayer.ALPHA
+                                        }
+                                        "NUMERIC" -> layer = KeyboardLayer.NUMERIC
                                         "EMOJI_KEY" -> panelMode = PanelMode.EMOJI
                                         "SPACE" -> {
                                             onCommitText(" ")
@@ -510,6 +529,18 @@ fun KeyboardRoot(
                                 },
                                 onDeleteParagraph = {
                                     onDeleteParagraph(isForwardDeleteMode)
+                                },
+                                onToggleNumericMode = {
+                                    layer = if (layer == KeyboardLayer.NUMERIC) {
+                                        if (lastNonNumericLayer == KeyboardLayer.SYMBOLS || lastNonNumericLayer == KeyboardLayer.SYMBOLS_MORE) {
+                                            KeyboardLayer.SYMBOLS
+                                        } else {
+                                            KeyboardLayer.ALPHA
+                                        }
+                                    } else {
+                                        lastNonNumericLayer = layer
+                                        KeyboardLayer.NUMERIC
+                                    }
                                 },
                                 onMoveCursor = onMoveCursor,
                                 onMoveCursorVertical = onMoveCursorVertical,
@@ -719,6 +750,8 @@ private fun ToolbarRow(
     onToggleClipboard: () -> Unit,
     onToggleTodo: () -> Unit,
     onOpenSettings: () -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
 ) {
     val density = LocalDensity.current
     val latestOnResize by rememberUpdatedState(onResizeDeltaDp)
@@ -754,54 +787,145 @@ private fun ToolbarRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(44.dp)
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            ToolbarIconButton(
-                icon = if (panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI) {
-                    Icons.Outlined.Keyboard
-                } else {
-                    Icons.Outlined.EmojiEmotions
-                },
-                contentDescription = "Emoji",
-                active = panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI,
-                onClick = onToggleEmoji,
-            )
-            ToolbarIconButton(
-                icon = if (panelMode == PanelMode.CLIPBOARD) {
-                    Icons.Outlined.Keyboard
-                } else {
-                    Icons.Outlined.ContentPaste
-                },
-                contentDescription = "Clipboard",
-                active = panelMode == PanelMode.CLIPBOARD,
-                onClick = onToggleClipboard,
-            )
-            ToolbarIconButton(
-                icon = if (panelMode == PanelMode.TODO) {
-                    Icons.Outlined.Keyboard
-                } else {
-                    Icons.Outlined.Checklist
-                },
-                contentDescription = "Todo List",
-                active = panelMode == PanelMode.TODO,
-                onClick = onToggleTodo,
-            )
-            if (canResize) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 ToolbarIconButton(
-                    icon = if (isExpanded) Icons.Outlined.KeyboardArrowDown else Icons.Outlined.KeyboardArrowUp,
-                    contentDescription = "Resize",
-                    active = isExpanded,
-                    onClick = onToggleExpand,
+                    icon = if (panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI) {
+                        Icons.Outlined.Keyboard
+                    } else {
+                        Icons.Outlined.EmojiEmotions
+                    },
+                    contentDescription = "Emoji",
+                    active = panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI,
+                    onClick = onToggleEmoji,
+                )
+                ToolbarIconButton(
+                    icon = if (panelMode == PanelMode.CLIPBOARD) {
+                        Icons.Outlined.Keyboard
+                    } else {
+                        Icons.Outlined.ContentPaste
+                    },
+                    contentDescription = "Clipboard",
+                    active = panelMode == PanelMode.CLIPBOARD,
+                    onClick = onToggleClipboard,
+                )
+                ToolbarIconButton(
+                    icon = if (panelMode == PanelMode.TODO) {
+                        Icons.Outlined.Keyboard
+                    } else {
+                        Icons.Outlined.Checklist
+                    },
+                    contentDescription = "Todo List",
+                    active = panelMode == PanelMode.TODO,
+                    onClick = onToggleTodo,
+                )
+                if (canResize) {
+                    ToolbarIconButton(
+                        icon = if (isExpanded) Icons.Outlined.KeyboardArrowDown else Icons.Outlined.KeyboardArrowUp,
+                        contentDescription = "Resize",
+                        active = isExpanded,
+                        onClick = onToggleExpand,
+                    )
+                }
+                ToolbarIconButton(
+                    icon = Icons.Outlined.Settings,
+                    contentDescription = "Settings",
+                    active = false,
+                    onClick = onOpenSettings,
                 )
             }
-            ToolbarIconButton(
-                icon = Icons.Outlined.Settings,
-                contentDescription = "Settings",
-                active = false,
-                onClick = onOpenSettings,
-            )
+
+            // Dedicated Undo / Redo Toolbar Pill (unlabeled with vertical bar divider)
+            Row(
+                modifier = Modifier
+                    .height(32.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(ActionKeyBgColor)
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                var undoPressed by remember { mutableStateOf(false) }
+                val undoScale by animateFloatAsState(
+                    targetValue = if (undoPressed) 0.85f else 1.0f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                    label = "undoScale",
+                )
+                if (undoPressed) {
+                    LaunchedEffect(Unit) {
+                        delay(120L)
+                        undoPressed = false
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .graphicsLayer {
+                            scaleX = undoScale
+                            scaleY = undoScale
+                        }
+                        .clip(CircleShape)
+                        .clickable {
+                            undoPressed = true
+                            onUndo()
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.Undo,
+                        contentDescription = "Undo",
+                        tint = ToolbarTextColor,
+                        modifier = Modifier.size(17.dp),
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(14.dp)
+                        .background(HintTextColor.copy(alpha = 0.35f), RoundedCornerShape(0.5.dp)),
+                )
+
+                var redoPressed by remember { mutableStateOf(false) }
+                val redoScale by animateFloatAsState(
+                    targetValue = if (redoPressed) 0.85f else 1.0f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                    label = "redoScale",
+                )
+                if (redoPressed) {
+                    LaunchedEffect(Unit) {
+                        delay(120L)
+                        redoPressed = false
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .graphicsLayer {
+                            scaleX = redoScale
+                            scaleY = redoScale
+                        }
+                        .clip(CircleShape)
+                        .clickable {
+                            redoPressed = true
+                            onRedo()
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.Redo,
+                        contentDescription = "Redo",
+                        tint = ToolbarTextColor,
+                        modifier = Modifier.size(17.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -2051,6 +2175,7 @@ private fun TouchKeyGrid(
     onBackspaceRepeat: () -> Unit,
     onDeleteWord: () -> Unit,
     onDeleteParagraph: () -> Unit,
+    onToggleNumericMode: () -> Unit,
     onMoveCursor: (Int) -> Unit,
     onMoveCursorVertical: (Int) -> Unit,
 ) {
@@ -2084,6 +2209,7 @@ private fun TouchKeyGrid(
     val latestOnBackspaceRepeat by rememberUpdatedState(onBackspaceRepeat)
     val latestOnDeleteWord by rememberUpdatedState(onDeleteWord)
     val latestOnDeleteParagraph by rememberUpdatedState(onDeleteParagraph)
+    val latestOnToggleNumericMode by rememberUpdatedState(onToggleNumericMode)
     val latestOnMoveCursor by rememberUpdatedState(onMoveCursor)
     val latestOnMoveCursorVertical by rememberUpdatedState(onMoveCursorVertical)
 
@@ -2279,6 +2405,13 @@ private fun TouchKeyGrid(
                                             pointer.lastGlideX = localPos.x
                                         }
                                     }
+                                } else if (pointer.keyId in setOf("SYMBOLS", "MORE_SYMBOLS", "ALPHA", "NUMERIC")) {
+                                    if (!pointer.deleteGestureTriggered && totalDy < -deleteSwipeThresholdPx && abs(totalDy) > abs(totalDx)) {
+                                        pointer.deleteGestureTriggered = true
+                                        pointer.longPressJob?.cancel()
+                                        latestOnKeyFeedback()
+                                        latestOnToggleNumericMode()
+                                    }
                                 } else {
                                     val popup = latestPopup
                                     if (popup != null) {
@@ -2338,17 +2471,18 @@ private fun TouchKeyGrid(
         ) {
             rows.forEachIndexed { rowIndex, row ->
                 val centerNineKeyRow = isAlphaLayer && rowIndex == 1 && row.size == 9
+                val rowHeight = if (layoutId == "numeric") 56.dp else 52.dp
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
+                        .height(rowHeight),
                     horizontalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     if (centerNineKeyRow) {
                         Spacer(modifier = Modifier.weight(0.5f))
                     }
                     row.forEach { keyId ->
-                        val weight = keyWeightFor(keyId)
+                        val weight = keyWeightFor(keyId, layoutId)
                         val isPill = isPillKey(keyId, rowIndex)
                         val isLessRoundedControl = isLessRoundedControlKey(keyId, rowIndex)
                         val isAction = isActionKey(keyId)
@@ -2376,7 +2510,14 @@ private fun TouchKeyGrid(
                             isLessRoundedControl -> RoundedCornerShape(10.dp)
                             else -> RoundedCornerShape(8.dp)
                         }
-                        val hint = if (isAlphaLayer) KeyboardStateLogic.hintForKey(layoutId, keyId) else null
+                        val hint = when {
+                            keyId == "SYMBOLS" -> "123"
+                            keyId == "NUMERIC" -> "?#"
+                            keyId == "ALPHA" && layoutId == "numeric" -> "ABC"
+                            keyId == "ALPHA" && !isAlphaLayer -> "123"
+                            isAlphaLayer -> KeyboardStateLogic.hintForKey(layoutId, keyId)
+                            else -> null
+                        }
 
                         KeyCap(
                             keyId = keyId,
@@ -2454,7 +2595,7 @@ private fun RowScope.KeyCap(
     Box(
         modifier = Modifier
             .weight(weight)
-            .height(52.dp)
+            .fillMaxHeight()
             .graphicsLayer {
                 scaleX = keyScale
                 scaleY = keyScale
@@ -2549,11 +2690,16 @@ private fun RowScope.KeyCap(
                 Text(
                     text = label,
                     color = foregroundColor,
-                    fontSize = when (keyId) {
-                        "SPACE", "SYMBOLS", "MORE_SYMBOLS", "ALPHA" -> 14.sp
+                    fontSize = when {
+                        keyId in setOf("SPACE", "SYMBOLS", "MORE_SYMBOLS", "ALPHA", "NUMERIC") -> 14.sp
+                        keyId.length == 1 && keyId[0].isDigit() -> 24.sp
                         else -> 21.sp
                     },
-                    fontWeight = if (isActionKey(keyId)) FontWeight.Medium else FontWeight.Normal,
+                    fontWeight = when {
+                        keyId.length == 1 && keyId[0].isDigit() -> FontWeight.SemiBold
+                        isActionKey(keyId) -> FontWeight.Medium
+                        else -> FontWeight.Normal
+                    },
                     maxLines = 1,
                     modifier = Modifier.align(Alignment.Center),
                 )
@@ -2662,14 +2808,17 @@ private fun findHitKey(bounds: Map<String, Rect>, pos: Offset): String? {
     return bestKey
 }
 
-private fun keyWeightFor(keyId: String): Float = when (keyId) {
-    "SPACE" -> 4.0f
-    "SHIFT", "BACKSPACE", "SYMBOLS", "MORE_SYMBOLS", "ALPHA", "RETURN" -> 1.5f
-    else -> 1f
+private fun keyWeightFor(keyId: String, layoutId: String = ""): Float {
+    if (layoutId == "numeric") return 1f
+    return when (keyId) {
+        "SPACE" -> 4.0f
+        "SHIFT", "BACKSPACE", "SYMBOLS", "MORE_SYMBOLS", "ALPHA", "NUMERIC", "RETURN" -> 1.5f
+        else -> 1f
+    }
 }
 
 private fun isPillKey(keyId: String, rowIndex: Int): Boolean =
-    rowIndex == 3 && keyId in setOf("SYMBOLS", "ALPHA", "RETURN")
+    rowIndex == 3 && keyId in setOf("SYMBOLS", "ALPHA", "NUMERIC", "RETURN")
 
 private fun isLessRoundedControlKey(keyId: String, rowIndex: Int): Boolean =
     keyId in setOf("SHIFT", "MORE_SYMBOLS", "BACKSPACE") || (rowIndex == 2 && keyId == "SYMBOLS")
@@ -2680,6 +2829,7 @@ private fun isActionKey(keyId: String): Boolean = keyId in setOf(
     "SYMBOLS",
     "MORE_SYMBOLS",
     "ALPHA",
+    "NUMERIC",
     "RETURN",
     ",",
     ".",
