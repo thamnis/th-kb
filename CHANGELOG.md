@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0-alpha.1] - 2026-11-19
+
+### Added
+- **French Contractions & Dynamic Elision Synthesis (Proposition A)**:
+  - Enriched `fr_common.json` and `en_common.json` with high-frequency French and English contractions (`c'est`, `j'ai`, `n'est`, `qu'il`, `d'accord`, `aujourd'hui`, `don't`, `can't`, `I'm`, `you're`, `that's`).
+  - Updated `strip_accents` / `stripAccents` and added dynamic French elision synthesis (`l'`, `d'`, `j'`, `n'`, `s'`, `c'`, `qu'`) in both Rust (`suggestion.rs`) and Kotlin (`SuggestionEngine.kt`) so typing or gliding `"lecole"`, `"cest"`, or `"jai"` produces `"l'école"`, `"c'est"`, and `"j'ai"`.
+- **Double-Letter Loop & Dwell Detection in Glided Typing (Proposition B)**:
+  - Added `detect_dwell_or_loop_zones` in `rust-core/src/suggestion.rs` and fixed log-frequency scaling in `score_swipe_word` so pausing or circling on a doubled key (`ll`, `nn`, `ss`, `pp`, `tt`) boosts double-letter candidates.
+- **Rust-Backed Bilingual Emoji & Kaomoji Search Bar (Proposition C)**:
+  - Added `search_emojis_bilingual` (`nativeSearchEmojis`) in `rust-core/src/search.rs` and an inline **`🔍` Search Bar** inside [`EmojiAndKaomojiPanel.kt`](app/src/main/kotlin/com/thamnis/thkb/ui/EmojiAndKaomojiPanel.kt) with English, French, and Ivorian/Nouchi keywords (`feu`, `coeur`, `rire`, `merci`, `garba`, `ci`) and an A–Z quick filter strip.
+- **Modularized UI Architecture & Pixel 7a Voice Service Discovery + Rust PCM Analyzer (Proposition D)**:
+  - Split `KeyboardRoot.kt` into [`KeyboardTheme.kt`](app/src/main/kotlin/com/thamnis/thkb/ui/KeyboardTheme.kt), [`EmojiAndKaomojiPanel.kt`](app/src/main/kotlin/com/thamnis/thkb/ui/EmojiAndKaomojiPanel.kt), [`ClipboardAndTodoPanels.kt`](app/src/main/kotlin/com/thamnis/thkb/ui/ClipboardAndTodoPanels.kt), and [`VoiceTypingPanel.kt`](app/src/main/kotlin/com/thamnis/thkb/ui/VoiceTypingPanel.kt).
+  - Updated [`VoiceInputManager.kt`](app/src/main/kotlin/com/thamnis/thkb/ime/VoiceInputManager.kt) to discover accessible `RecognitionService` components (`GoogleTTSRecognitionService` / FUTO / Whisper / Sherpa) avoiding restricted Pixel `AiAiSpeechRecognitionService` UID blocks, plus added native Rust 16kHz PCM RMS analysis (`nativeAnalyzePcmRms`).
+
 ## [0.7.0-alpha.1] - 2026-11-19
 
 ### Added

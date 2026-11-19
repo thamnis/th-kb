@@ -452,26 +452,45 @@ class SuggestionEngine(private val context: Context? = null) {
 
         val blockedSet = personalState.blocked
         val ranked = mutableMapOf<String, Pair<String, Double>>()
+        val primaryStart = startChars.firstOrNull()
+        fun evaluateWord(canonical: String, clean: String, logFreqScaled: Double) {
+            if (clean.length < 2 || blockedSet.contains(canonical.lowercase(Locale.ROOT))) return
+            val lastCh = clean.lastOrNull { it.isLetter() } ?: return
+            if (lastCh !in endChars) return
+            val score = scoreSwipeFallbackWord(
+                cleanWord = clean,
+                logFreq = logFreqScaled,
+                centers = centersMap,
+                resampled = pts,
+                totalLen = totalLen,
+                keyUnit = keyUnit,
+            ) ?: return
+            val lower = canonical.lowercase(Locale.ROOT)
+            val prev = ranked[lower]
+            if (prev == null || score > prev.second) {
+                ranked[lower] = canonical to score
+            }
+        }
         fun evaluateEntries(idx: IndexedFallbackModel, overlayBoost: Double) {
             for (startCh in startChars) {
                 val bucket = idx.prefix1[startCh] ?: continue
                 for (entryIdx in bucket) {
                     val entry = idx.entries[entryIdx]
-                    if (entry.clean.length < 2 || blockedSet.contains(entry.canonical.lowercase(Locale.ROOT))) continue
-                    val lastCh = entry.clean.lastOrNull { it.isLetter() } ?: continue
-                    if (lastCh !in endChars) continue
-                    val score = scoreSwipeFallbackWord(
-                        cleanWord = entry.clean,
-                        logFreq = (entry.logFreq / 100.0) + overlayBoost,
-                        centers = centersMap,
-                        resampled = pts,
-                        totalLen = totalLen,
-                        keyUnit = keyUnit,
-                    ) ?: continue
-                    val lower = entry.canonical.lowercase(Locale.ROOT)
-                    val prev = ranked[lower]
-                    if (prev == null || score > prev.second) {
-                        ranked[lower] = entry.canonical to score
+                    evaluateWord(entry.canonical, entry.clean, (entry.logFreq / 100.0) + overlayBoost)
+                }
+                if (startCh == primaryStart && startCh in charArrayOf('l', 'd', 'j', 'n', 's', 'c')) {
+                    for (vowel in charArrayOf('a', 'e', 'i', 'o', 'u', 'h')) {
+                        val vBucket = idx.prefix1[vowel] ?: continue
+                        for (entryIdx in vBucket.take(45)) {
+                            val entry = idx.entries[entryIdx]
+                            if (entry.clean.length >= 4) {
+                                evaluateWord(
+                                    canonical = "$startCh'${entry.canonical}",
+                                    clean = "$startCh${entry.clean}",
+                                    logFreqScaled = (entry.logFreq / 100.0) - 0.15 + overlayBoost,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -787,6 +806,36 @@ class SuggestionEngine(private val context: Context? = null) {
             }
         }
 
+        // 4. French Elision Synthesis ("lecole" -> "l'école", "jaime" -> "j'aime")
+        val isFrLayout = layoutId.contains("fr") || layoutId.contains("ci")
+        if (isFrLayout && cleanPrefix.length >= 3) {
+            val elisions = listOf(
+                "qu" to "qu'",
+                "l" to "l'",
+                "d" to "d'",
+                "j" to "j'",
+                "n" to "n'",
+                "s" to "s'",
+                "c" to "c'",
+                "m" to "m'",
+                "t" to "t'",
+            )
+            for ((rawP, displayP) in elisions) {
+                if (cleanPrefix.startsWith(rawP)) {
+                    val rem = cleanPrefix.removePrefix(rawP)
+                    if (rem.length >= 2 && rem[0] in charArrayOf('a', 'e', 'i', 'o', 'u', 'y', 'h')) {
+                        index.exactClean[rem]?.take(2)?.forEach { idx ->
+                            val entry = index.entries[idx]
+                            val synth = "$displayP${entry.canonical}"
+                            if (!isBlocked(synth)) {
+                                scored.add(Triple(synth, entry.logFreq + 295.0, true))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         scored.sortByDescending { it.second }
 
         val results = mutableListOf<SuggestionCandidate>()
@@ -979,6 +1028,7 @@ class SuggestionEngine(private val context: Context? = null) {
         fun stripAccents(s: String): String {
             val out = StringBuilder(s.length)
             for (c in s) {
+                if (c == '\'' || c == '\u2019' || c == '-') continue
                 when (c) {
                     'à', 'á', 'â', 'ã', 'ä', 'å' -> out.append('a')
                     'è', 'é', 'ê', 'ë' -> out.append('e')
@@ -992,6 +1042,121 @@ class SuggestionEngine(private val context: Context? = null) {
                 }
             }
             return out.toString()
+        }
+
+        private val EMOJI_KEYWORD_CATALOG = listOf(
+            "😂" to "laugh rire lol mdr ptdr tears pleurer joie funny",
+            "🤣" to "rofl laugh rire mdr ptdr hilarious",
+            "😀" to "grin smile sourire happy heureux",
+            "😊" to "blush smile sourire cute mignon",
+            "😍" to "love heart eyes amour coeur adore kpata",
+            "🥰" to "love hearts amoureux affection calin",
+            "😘" to "kiss bisou baiser love amour",
+            "😎" to "cool sunglasses lunettes boss",
+            "🥳" to "party celebrate fete anniversaire enjaillement",
+            "🤩" to "star eyes wow super genial",
+            "🤔" to "think thinking reflechir hmm sciencer",
+            "😅" to "sweat relief ouf chaud",
+            "😭" to "cry sob pleurer triste sad",
+            "😡" to "angry mad colere furieux",
+            "🤯" to "mind blown explosion choc",
+            "😴" to "sleep tired dormir fatigue dodo",
+            "🤧" to "sneeze sick malade rhume",
+            "❤️" to "heart red love coeur amour rouge",
+            "🧡" to "orange heart coeur",
+            "💛" to "yellow heart coeur jaune",
+            "💚" to "green heart coeur vert",
+            "💙" to "blue heart coeur bleu",
+            "💜" to "purple heart coeur violet",
+            "🖤" to "black heart coeur noir",
+            "🤍" to "white heart coeur blanc",
+            "💔" to "broken heart coeur brise",
+            "💯" to "hundred 100 parfait top",
+            "🔥" to "fire hot flame feu chaud lit",
+            "✨" to "sparkles magic etoiles briller",
+            "⭐" to "star etoile favori",
+            "👍" to "thumbs up ok good oui bien super",
+            "👎" to "thumbs down no non mauvais",
+            "🙏" to "pray thanks please merci pardon stp svp",
+            "👏" to "clap bravo applaudir",
+            "🙌" to "hands celebrate hourra gloire",
+            "🤝" to "handshake deal accord ensemble",
+            "💪" to "muscle strong force fort",
+            "👋" to "wave hello bye salut coucou",
+            "✌️" to "peace victory paix victoire",
+            "🤞" to "fingers crossed chance",
+            "👀" to "eyes look voir regarder",
+            "✅" to "check done ok valide oui",
+            "❌" to "cross no error non erreur",
+            "⚠️" to "warning alert attention danger",
+            "🎉" to "tada party fete bravo",
+            "🎂" to "cake birthday gateau anniversaire",
+            "🍕" to "pizza food manger",
+            "🍔" to "burger food manger",
+            "🍟" to "fries frites manger",
+            "🍗" to "chicken poulet kedjenou braise",
+            "🐟" to "fish poisson garba braise",
+            "🍌" to "banana banane alloco foutou",
+            "🍚" to "rice riz attieke tchep",
+            "🍺" to "beer biere boisson",
+            "☕" to "coffee tea cafe chaud",
+            "🚗" to "car auto voiture route",
+            "✈️" to "plane flight avion voyage",
+            "🏠" to "home house maison",
+            "💻" to "laptop computer code pc tech",
+            "📱" to "phone mobile telephone",
+            "💰" to "money cash argent wave momo",
+            "🎵" to "music note musique son zouglou",
+            "⚽" to "soccer football ballon",
+            "🏆" to "trophy winner trophee champion",
+            "🇨🇮" to "cote divoire ivory coast ci abidjan babi",
+            "🇫🇷" to "france fr drapeau flag",
+            "🇺🇸" to "usa america us flag",
+            "🇬🇧" to "uk britain angleterre flag",
+            "🇸🇳" to "senegal dakar flag",
+            "🇨🇲" to "cameroon cameroun flag",
+            "🇲🇱" to "mali bamako flag",
+            "🇧🇫" to "burkina faso ouaga flag",
+        )
+
+        fun searchEmojisBilingual(query: String): List<String> {
+            val trimmed = query.trim()
+            if (trimmed.isEmpty()) return emptyList()
+            if (NativeSuggestionBridge.isLoaded) {
+                val rawJson = runCatching { NativeSuggestionBridge.nativeSearchEmojis(trimmed) }.getOrDefault("")
+                if (rawJson.isNotEmpty()) {
+                    val arr = runCatching { JSONArray(rawJson) }.getOrNull()
+                    if (arr != null && arr.length() > 0) {
+                        return buildList {
+                            for (i in 0 until arr.length()) {
+                                add(arr.getString(i))
+                            }
+                        }
+                    }
+                }
+            }
+            val needle = stripAccents(trimmed.lowercase(Locale.ROOT))
+            if (needle.isEmpty()) return emptyList()
+            return EMOJI_KEYWORD_CATALOG.mapNotNull { (emoji, tags) ->
+                if (tags.split(' ').any { it.startsWith(needle) || it.contains(needle) }) emoji else null
+            }
+        }
+
+        fun analyzePcmRms(samples: ShortArray, length: Int): Float {
+            if (length <= 0 || samples.isEmpty()) return 0f
+            if (NativeSuggestionBridge.isLoaded) {
+                return runCatching { NativeSuggestionBridge.nativeAnalyzePcmRms(samples, length) }.getOrDefault(0f)
+            }
+            var sumSq = 0.0
+            val n = minOf(length, samples.size)
+            for (i in 0 until n) {
+                val v = samples[i] / 32768.0
+                sumSq += v * v
+            }
+            val rms = kotlin.math.sqrt(sumSq / n)
+            if (rms <= 1e-5) return 0f
+            val db = 20.0 * log10(rms)
+            return (((db + 45.0) / 4.0).toFloat()).coerceIn(0f, 10f)
         }
 
         private fun keyCoords(ch: Char, layoutId: String): Pair<Double, Double>? {

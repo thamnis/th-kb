@@ -423,6 +423,43 @@ impl SuggestionIndex {
             }
         }
 
+        // 4. French Elision Synthesis (Proposition A): "lecole" -> "l'école", "jaime" -> "j'aime", "quil" -> "qu'il"
+        let is_fr_layout = layout_id.contains("fr") || layout_id.contains("ci");
+        if is_fr_layout && prefix_len >= 3 {
+            let elision_prefixes = [
+                ("qu", "qu'"),
+                ("l", "l'"),
+                ("d", "d'"),
+                ("j", "j'"),
+                ("n", "n'"),
+                ("s", "s'"),
+                ("c", "c'"),
+                ("m", "m'"),
+                ("t", "t'"),
+            ];
+            for &(raw_p, display_p) in &elision_prefixes {
+                if let Some(rem) = clean_prefix.strip_prefix(raw_p) {
+                    if rem.len() >= 2
+                        && rem
+                            .chars()
+                            .next()
+                            .is_some_and(|c| matches!(c, 'a' | 'e' | 'i' | 'o' | 'u' | 'y' | 'h'))
+                    {
+                        if let Some(exact_indices) = self.exact_clean.get(rem) {
+                            for &idx in exact_indices.iter().take(2) {
+                                let entry = &self.entries[idx];
+                                let synthesized = format!("{display_p}{}", entry.canonical);
+                                if !is_blocked(&synthesized) {
+                                    let score = entry.log_freq + 295.0;
+                                    candidates.push((synthesized, score, true));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         let mut results = Vec::new();
@@ -600,9 +637,10 @@ pub fn apply_casing(canonical: &str, style: CasingStyle) -> String {
     }
 }
 
-/// Normalizes accented characters for accent-insensitive prefix matching.
+/// Normalizes accented characters and strips apostrophes/hyphens for contraction-friendly matching.
 pub fn strip_accents(s: &str) -> String {
     s.chars()
+        .filter(|&c| c != '\'' && c != '\u{2019}' && c != '-')
         .map(|c| match c {
             'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => 'a',
             'è' | 'é' | 'ê' | 'ë' => 'e',
@@ -845,6 +883,32 @@ fn detect_inflection_points(resampled: &[(f64, f64)], key_unit: f64) -> Vec<((f6
         .collect()
 }
 
+/// Detects micro-dwell or small loop zones in raw swipe points where a user paused or circled
+/// on a key to indicate a doubled letter (e.g. "ll" in "belle", "nn" in "bonne", "pp" in "appel").
+fn detect_dwell_or_loop_zones(raw: &[SwipePoint], key_unit: f64) -> Vec<(f64, f64)> {
+    if raw.len() < 6 {
+        return Vec::new();
+    }
+    let cluster_radius = key_unit * 0.44;
+    let mut zones: Vec<(f64, f64)> = Vec::new();
+    for win in raw.windows(5) {
+        let cx = win.iter().map(|p| p.x).sum::<f64>() / 5.0;
+        let cy = win.iter().map(|p| p.y).sum::<f64>() / 5.0;
+        let max_d = win
+            .iter()
+            .map(|p| dist2d((p.x, p.y), (cx, cy)))
+            .fold(0.0, f64::max);
+        if max_d <= cluster_radius
+            && zones
+                .last()
+                .is_none_or(|&prev| dist2d(prev, (cx, cy)) > key_unit * 0.5)
+        {
+            zones.push((cx, cy));
+        }
+    }
+    zones
+}
+
 #[allow(clippy::too_many_arguments)]
 fn score_swipe_word(
     clean_word: &str,
@@ -853,19 +917,22 @@ fn score_swipe_word(
     centers: &HashMap<char, (f64, f64)>,
     resampled: &[(f64, f64)],
     inflections: &[((f64, f64), f64)],
+    dwell_zones: &[(f64, f64)],
     total_len: f64,
     key_unit: f64,
 ) -> Option<f64> {
     let mut dedup_pts: Vec<(f64, f64)> = Vec::new();
+    let mut doubled_pts: Vec<(f64, f64)> = Vec::new();
     let mut prev_ch: Option<char> = None;
     for ch in clean_word.chars() {
         if !ch.is_alphabetic() {
             continue;
         }
+        let &pt = centers.get(&ch)?;
         if Some(ch) == prev_ch {
+            doubled_pts.push(pt);
             continue;
         }
-        let &pt = centers.get(&ch)?;
         dedup_pts.push(pt);
         prev_ch = Some(ch);
     }
@@ -954,12 +1021,29 @@ fn score_swipe_word(
     let gaussian_endpoints =
         ((-start_d * start_d / sigma2).exp() + (-end_d * end_d / sigma2).exp()) * 8.0;
 
-    let score = log_freq * 3.0 + context_bonus * 0.25 + gaussian_endpoints
-        - (forward_avg / key_unit) * 24.0
-        - (reverse_avg / key_unit) * 26.0
-        - ((start_d + end_d) / key_unit) * 18.0
-        - corner_penalty
-        - (len_diff / key_unit) * 7.5;
+    // Proposition B: Double-letter loop/dwell bonus when raw gesture lingers or loops on a doubled key
+    let mut double_letter_bonus = 0.0;
+    for &dbl_pt in &doubled_pts {
+        if dwell_zones
+            .iter()
+            .any(|&z| dist2d(z, dbl_pt) <= key_unit * 0.78)
+        {
+            double_letter_bonus += 7.5;
+        }
+    }
+
+    let zipf = if log_freq > 20.0 {
+        log_freq / 100.0
+    } else {
+        log_freq
+    };
+    let score =
+        zipf * 3.2 + (context_bonus / 100.0) * 4.5 + gaussian_endpoints + double_letter_bonus
+            - (forward_avg / key_unit) * 24.0
+            - (reverse_avg / key_unit) * 26.0
+            - ((start_d + end_d) / key_unit) * 18.0
+            - corner_penalty
+            - (len_diff / key_unit) * 7.5;
 
     Some(score)
 }
@@ -1025,6 +1109,7 @@ pub fn decode_swipe_with_overlay(
 
     let is_blocked = |word: &str| personal.is_some_and(|p| p.is_blocked(word));
     let inflections = detect_inflection_points(&resampled, key_unit);
+    let dwell_zones = detect_dwell_or_loop_zones(swipe_points, key_unit);
     let mut best_by_lower: HashMap<String, (String, f64)> = HashMap::new();
 
     let mut score_entry =
@@ -1045,6 +1130,7 @@ pub fn decode_swipe_with_overlay(
                 &centers,
                 &resampled,
                 &inflections,
+                &dwell_zones,
                 total_len,
                 key_unit,
             ) {
@@ -1072,6 +1158,28 @@ pub fn decode_swipe_with_overlay(
                     let entry = &ov.entries[idx];
                     // Give active dialect packs a slight boost over obscure generic entries
                     score_entry(&entry.canonical, &entry.clean, entry.log_freq + 0.6, ov);
+                }
+            }
+        }
+        // Proposition A: Dynamic French elision synthesis for glided words ("l'école", "d'amour", "j'aime")
+        if Some(start_ch) == start_keys.first().map(|&(c, _)| c)
+            && matches!(start_ch, 'l' | 'd' | 'j' | 'n' | 's' | 'c')
+        {
+            for vowel in ['a', 'e', 'i', 'o', 'u', 'h'] {
+                if let Some(v_indices) = base.prefix1.get(&vowel) {
+                    for &idx in v_indices.iter().take(45) {
+                        let entry = &base.entries[idx];
+                        if entry.clean.chars().count() >= 4 {
+                            let elided_canonical = format!("{start_ch}'{}", entry.canonical);
+                            let elided_clean = format!("{start_ch}{}", entry.clean);
+                            score_entry(
+                                &elided_canonical,
+                                &elided_clean,
+                                entry.log_freq - 15.0,
+                                base,
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -1675,5 +1783,34 @@ mod tests {
             decode_swipe_with_overlay(&idx, None, None, &[], &centers, &mogo_path, false, 3);
         assert!(!mogo_hits.is_empty());
         assert_eq!(mogo_hits[0].word, "môgô");
+    }
+
+    #[test]
+    fn french_contractions_and_elisions_match_clean_and_swipe() {
+        let tsv = "école\t400000\nc'est\t950000\nj'ai\t880000\n";
+        let idx = SuggestionIndex::build(tsv, &[]);
+        let centers = azerty_centers();
+
+        // Typing "cest" matches "c'est"
+        let cest = idx.query(&[], "cest", "advanced_autocomplete", "azerty_fr", false, 3);
+        assert!(!cest.is_empty());
+        assert_eq!(cest[0].word, "c'est");
+
+        // Typing "lecole" synthesizes "l'école"
+        let lecole = idx.query(
+            &[],
+            "lecole",
+            "advanced_autocomplete",
+            "azerty_fr",
+            false,
+            3,
+        );
+        assert!(lecole.iter().any(|c| c.word == "l'école"));
+
+        // Gliding "lecole" synthesizes "l'école"
+        let lecole_path = trace_keys(&centers, "lecole");
+        let lecole_swipe =
+            decode_swipe_with_overlay(&idx, None, None, &[], &centers, &lecole_path, false, 3);
+        assert!(lecole_swipe.iter().any(|c| c.word == "l'école"));
     }
 }

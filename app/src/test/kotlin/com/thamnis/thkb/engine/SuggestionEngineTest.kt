@@ -308,4 +308,39 @@ class SuggestionEngineTest {
         assertFalse(mogoHits.isEmpty())
         assertEquals("Môgô", mogoHits[0].word)
     }
+
+    @Test
+    fun frenchContractionsElisionsAndBilingualEmojiSearchWorkCleanly() {
+        val dict = SuggestionEngine.parseDictionary(
+            """
+            {
+              "words": {
+                "c'est": 950000,
+                "j'ai": 880000,
+                "école": 450000
+              }
+            }
+            """.trimIndent(),
+        )
+        val engine = SuggestionEngine(null)
+
+        val cestHits = engine.querySuggestions(dict, emptyList(), "cest", "advanced_autocomplete", 3, "azerty_fr")
+        assertFalse(cestHits.isEmpty())
+        assertEquals("c'est", cestHits[0].word)
+
+        val lecoleHits = engine.querySuggestions(dict, emptyList(), "lecole", "advanced_autocomplete", 3, "azerty_fr")
+        assertFalse(lecoleHits.isEmpty())
+        assertEquals("l'école", lecoleHits[0].word)
+
+        val fireEmojis = SuggestionEngine.searchEmojisBilingual("feu")
+        assertFalse(fireEmojis.isEmpty())
+        assertEquals("🔥", fireEmojis[0])
+
+        val ciEmojis = SuggestionEngine.searchEmojisBilingual("abidjan")
+        assertFalse(ciEmojis.isEmpty())
+        assertEquals("🇨🇮", ciEmojis[0])
+
+        val rms = SuggestionEngine.analyzePcmRms(ShortArray(160) { 10000 }, 160)
+        assertFalse(rms <= 0f)
+    }
 }

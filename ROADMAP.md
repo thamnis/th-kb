@@ -66,6 +66,13 @@
 - [x] **Deterministic IME Undo / Redo Engine**: In-IME text snapshot delta stack (`undoStack` / `redoStack`) working across all Android and Jetpack Compose text fields
 - [x] **Keyboard & Emoji Visual Refinements**: Soft animated key-glide glow, spring-animated spacebar cursor slider, rounded-rectangular alphanum switch button with single accurate `123` / `?#` glide-up indicator, and larger `28.5.sp` tightly-spaced emojis
 
+## `v0.8` — Contraction Elisions, Loop-Glide Disambiguation, Emoji Search & Modular UI
+
+- [x] **Proposition A — French Contractions & Dynamic Elision Synthesis**: Typing or gliding `"cest"`, `"jai"`, `"lecole"`, `"daccord"` resolves `"c'est"`, `"j'ai"`, `"l'école"`, `"d'accord"` natively in Rust & Kotlin
+- [x] **Proposition B — Loop / Dwell Double-Letter Glide Detection**: Detects micro-loops/dwells on doubled keys (`ll`, `nn`, `ss`, `pp`, `tt`) in `rust-core`
+- [x] **Proposition C — Rust-Backed Bilingual Emoji & Kaomoji Search**: Inline `🔍` search strip inside the Emoji & Kaomoji panel matching English, French, and Ivorian/Nouchi tags
+- [x] **Proposition D — Modular UI & Accessible On-Device Voice Discovery + Rust PCM Audio Analyzer**: Split `KeyboardRoot.kt` into dedicated `ui/` modules and bound `VoiceInputManager` directly to accessible offline-capable `RecognitionService` components + native Rust 16kHz PCM RMS analysis
+
 ## `v1.0` — Public Release
 
 - [ ] Daily-driver stability, touch latency tuning, and `v0.x` bug fixes

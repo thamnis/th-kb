@@ -48,4 +48,8 @@ internal object NativeSuggestionBridge {
         capitalizeHint: Boolean,
         maxResults: Int,
     ): String
+
+    external fun nativeSearchEmojis(query: String): String
+
+    external fun nativeAnalyzePcmRms(pcmArray: ShortArray, length: Int): Float
 }

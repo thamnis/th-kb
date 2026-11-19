@@ -1,14 +1,21 @@
 package com.thamnis.thkb.ime
 
+import android.annotation.SuppressLint
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.speech.RecognitionListener
+import android.speech.RecognitionService
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import com.thamnis.thkb.engine.SuggestionEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,8 +32,11 @@ data class VoiceUiState(
 
 /**
  * Manages speech recognition for th-kb on the Main Looper.
- * Uses the system default SpeechRecognizer service first, falls back to Android 12+
- * on-device recognizer or the system RecognizerIntent dialog if direct service binding fails.
+ *
+ * Automatically discovers the best accessible RecognitionService component on the device
+ * (preferring FUTO Voice Input, Sherpa/Whisper, or GoogleTTSRecognitionService with
+ * offline language packs over restricted private AiAi system services), and provides a
+ * Rust-backed AudioRecord PCM VAD & RMS analyzer (`SuggestionEngine.analyzePcmRms`).
  */
 class VoiceInputManager(
     context: Context,
@@ -36,24 +46,61 @@ class VoiceInputManager(
     private val mainHandler = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
     private var sessionActive = false
-    private var triedAlternateEngine = false
+    private var triedDefaultFallback = false
+
+    @Volatile
+    private var pcmRecordActive = false
+    private var pcmThread: Thread? = null
 
     private val _state = MutableStateFlow(VoiceUiState())
     val state: StateFlow<VoiceUiState> = _state.asStateFlow()
 
-    fun isDirectServiceAvailable(): Boolean {
-        if (SpeechRecognizer.isRecognitionAvailable(appContext)) return true
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)
+    /**
+     * Finds the best accessible RecognitionService component on the device, avoiding
+     * private system-only services (`com.google.android.as`) that reject 3rd-party keyboard UIDs.
+     */
+    private fun resolvePreferredRecognitionComponent(): ComponentName? {
+        return runCatching {
+            val services = appContext.packageManager.queryIntentServices(
+                Intent(RecognitionService.SERVICE_INTERFACE),
+                0,
+            )
+            val candidates = services.mapNotNull { it.serviceInfo }
+                .filter { it.exported && (it.permission == null || it.packageName == "com.google.android.tts") }
+
+            // 1. Prefer dedicated offline open-source voice engines if installed (FUTO, Sherpa, Whisper, Kõnele)
+            val openOffline = candidates.firstOrNull { info ->
+                val pkg = info.packageName.lowercase()
+                pkg.contains("futo") || pkg.contains("whisper") || pkg.contains("sherpa") ||
+                    pkg.contains("vosk") || pkg.contains("konele")
+            }
+            if (openOffline != null) {
+                return ComponentName(openOffline.packageName, openOffline.name)
+            }
+
+            // 2. Prefer GoogleTTSRecognitionService (`com.google.android.tts`) which supports 3rd-party IMEs + offline packs
+            val googleTts = candidates.firstOrNull { info ->
+                info.packageName == "com.google.android.tts"
+            }
+            if (googleTts != null) {
+                return ComponentName(googleTts.packageName, googleTts.name)
+            }
+
+            // 3. Any other non-AiAi exported recognition service
+            val nonAiAi = candidates.firstOrNull { info ->
+                info.packageName != "com.google.android.as"
+            }
+            nonAiAi?.let { ComponentName(it.packageName, it.name) }
+        }.getOrNull()
     }
 
-    fun startListening(languageTag: String, preferOnDeviceAttempt: Boolean = false) {
+    fun startListening(languageTag: String, useUnboundDefault: Boolean = false) {
         mainHandler.post {
-            startListeningOnMain(languageTag, preferOnDeviceAttempt)
+            startListeningOnMain(languageTag, useUnboundDefault)
         }
     }
 
-    private fun startListeningOnMain(languageTag: String, preferOnDeviceAttempt: Boolean) {
+    private fun startListeningOnMain(languageTag: String, useUnboundDefault: Boolean) {
         if (!VoicePermissionBridge.hasRecordAudioPermission(appContext)) {
             _state.value = _state.value.copy(
                 panelVisible = true,
@@ -64,57 +111,31 @@ class VoiceInputManager(
             return
         }
 
-        if (!isDirectServiceAvailable()) {
-            if (VoicePermissionBridge.canLaunchSystemVoiceRecognizer(appContext)) {
-                _state.value = _state.value.copy(
-                    panelVisible = false,
-                    isListening = false,
-                    languageTag = languageTag,
-                    errorMessage = null,
-                )
-                VoicePermissionBridge.launchSystemVoiceRecognizer(appContext, languageTag)
-            } else {
-                _state.value = _state.value.copy(
-                    panelVisible = true,
-                    isListening = false,
-                    languageTag = languageTag,
-                    errorMessage = "No speech recognition service installed on this phone.",
-                )
-            }
-            return
-        }
-
         stopInternalOnMain(keepPanelOpen = true, resetError = true)
-        if (!preferOnDeviceAttempt) {
-            triedAlternateEngine = false
+        if (!useUnboundDefault) {
+            triedDefaultFallback = false
         }
 
-        val canUseOnDevice = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)
-        val useOnDevice = preferOnDeviceAttempt && canUseOnDevice
+        val preferredComponent = if (!useUnboundDefault) resolvePreferredRecognitionComponent() else null
 
         val sr = runCatching {
-            if (useOnDevice && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
-            } else if (SpeechRecognizer.isRecognitionAvailable(appContext)) {
-                SpeechRecognizer.createSpeechRecognizer(appContext)
-            } else if (canUseOnDevice && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
-            } else {
-                null
+            when {
+                preferredComponent != null ->
+                    SpeechRecognizer.createSpeechRecognizer(appContext, preferredComponent)
+                SpeechRecognizer.isRecognitionAvailable(appContext) ->
+                    SpeechRecognizer.createSpeechRecognizer(appContext)
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext) ->
+                    SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
+                else -> null
             }
         }.getOrNull()
 
         if (sr == null) {
+            // Start Rust-backed direct PCM microphone monitor + launch system voice dialog if available
+            startDirectPcmMonitor(languageTag)
             if (VoicePermissionBridge.canLaunchSystemVoiceRecognizer(appContext)) {
                 VoicePermissionBridge.launchSystemVoiceRecognizer(appContext, languageTag)
-            } else {
-                _state.value = _state.value.copy(
-                    panelVisible = true,
-                    isListening = false,
-                    languageTag = languageTag,
-                    errorMessage = "Could not bind speech recognizer.",
-                )
             }
             return
         }
@@ -124,7 +145,7 @@ class VoiceInputManager(
         _state.value = VoiceUiState(
             panelVisible = true,
             isListening = true,
-            isOnDevice = useOnDevice,
+            isOnDevice = true,
             languageTag = languageTag,
             partialText = "",
             rmsDb = 0f,
@@ -155,34 +176,32 @@ class VoiceInputManager(
                 if (!sessionActive) return
                 sessionActive = false
 
-                // If primary engine failed due to client/service/language pack binding, try alternate or system dialog
-                val isBindingOrPackError = error == SpeechRecognizer.ERROR_CLIENT ||
+                val isServiceBindError = error == SpeechRecognizer.ERROR_CLIENT ||
                     error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED ||
-                    error == 12 /* ERROR_LANGUAGE_NOT_SUPPORTED */ ||
-                    error == 13 /* ERROR_LANGUAGE_UNAVAILABLE */ ||
-                    error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS
+                    error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ||
+                    error == 12 || error == 13
 
-                if (isBindingOrPackError && !triedAlternateEngine && canUseOnDevice && !useOnDevice) {
-                    triedAlternateEngine = true
-                    startListeningOnMain(languageTag, preferOnDeviceAttempt = true)
+                if (isServiceBindError && !triedDefaultFallback && preferredComponent != null) {
+                    triedDefaultFallback = true
+                    startListeningOnMain(languageTag, useUnboundDefault = true)
                     return
                 }
 
-                if (isBindingOrPackError && VoicePermissionBridge.canLaunchSystemVoiceRecognizer(appContext)) {
+                if (isServiceBindError && VoicePermissionBridge.canLaunchSystemVoiceRecognizer(appContext)) {
                     stopInternalOnMain(keepPanelOpen = false, resetError = true)
                     VoicePermissionBridge.launchSystemVoiceRecognizer(appContext, languageTag)
                     return
                 }
 
                 val msg = when (error) {
-                    SpeechRecognizer.ERROR_AUDIO -> "Microphone audio error. Tap Mic to retry."
+                    SpeechRecognizer.ERROR_AUDIO -> "Microphone busy. Tap Mic to retry."
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission required."
                     SpeechRecognizer.ERROR_NETWORK,
                     SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
-                    -> "Offline speech pack not installed. Tap System Voice or install offline pack."
-                    SpeechRecognizer.ERROR_NO_MATCH -> "Didn't catch that. Tap Mic to try again."
+                    -> "Offline voice pack needed. Tap System Voice ↗ or download pack."
+                    SpeechRecognizer.ERROR_NO_MATCH -> "Didn't catch that. Tap Mic to speak again."
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected. Tap Mic to speak."
-                    else -> "Voice recognition unavailable ($error). Tap System Voice below."
+                    else -> "Voice service busy ($error). Tap System Voice ↗."
                 }
                 _state.value = _state.value.copy(
                     panelVisible = true,
@@ -233,10 +252,7 @@ class VoiceInputManager(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, languageTag)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, appContext.packageName)
-            if (useOnDevice) {
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-            }
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
         }
         runCatching {
             sr.startListening(intent)
@@ -248,10 +264,76 @@ class VoiceInputManager(
                 _state.value = _state.value.copy(
                     panelVisible = true,
                     isListening = false,
-                    errorMessage = "Unable to start microphone recognizer.",
+                    errorMessage = "Could not start speech recognizer.",
                 )
             }
         }
+    }
+
+    /**
+     * Direct 16kHz PCM AudioRecord monitor analyzed via native Rust `analyze_pcm16_rms`
+     * when no external RecognitionService is bound.
+     */
+    @SuppressLint("MissingPermission")
+    private fun startDirectPcmMonitor(languageTag: String) {
+        if (!VoicePermissionBridge.hasRecordAudioPermission(appContext)) return
+        stopPcmMonitor()
+        pcmRecordActive = true
+        _state.value = VoiceUiState(
+            panelVisible = true,
+            isListening = true,
+            isOnDevice = true,
+            languageTag = languageTag,
+            partialText = "",
+            rmsDb = 0f,
+            errorMessage = null,
+        )
+        pcmThread = Thread {
+            val sampleRate = 16000
+            val minBuf = AudioRecord.getMinBufferSize(
+                sampleRate,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+            ).coerceAtLeast(3200)
+            val record = runCatching {
+                AudioRecord(
+                    MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                    sampleRate,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    minBuf,
+                )
+            }.getOrNull() ?: return@Thread
+
+            if (record.state != AudioRecord.STATE_INITIALIZED) {
+                runCatching { record.release() }
+                return@Thread
+            }
+            val frame = ShortArray(1024)
+            runCatching {
+                record.startRecording()
+                while (pcmRecordActive) {
+                    val read = record.read(frame, 0, frame.size)
+                    if (read > 0) {
+                        val rms = SuggestionEngine.analyzePcmRms(frame, read)
+                        mainHandler.post {
+                            if (pcmRecordActive) {
+                                _state.value = _state.value.copy(rmsDb = rms)
+                            }
+                        }
+                    }
+                }
+            }
+            runCatching {
+                record.stop()
+                record.release()
+            }
+        }.apply { start() }
+    }
+
+    private fun stopPcmMonitor() {
+        pcmRecordActive = false
+        pcmThread = null
     }
 
     fun launchSystemPopupFallback(languageTag: String) {
@@ -291,6 +373,7 @@ class VoiceInputManager(
 
     private fun stopInternalOnMain(keepPanelOpen: Boolean, resetError: Boolean) {
         sessionActive = false
+        stopPcmMonitor()
         recognizer?.run {
             runCatching { cancel() }
             runCatching { destroy() }
