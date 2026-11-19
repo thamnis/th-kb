@@ -23,6 +23,7 @@ enum class PanelMode {
     KAOMOJI,
     CLIPBOARD,
     TODO,
+    VOICE,
 }
 
 enum class InputContext {

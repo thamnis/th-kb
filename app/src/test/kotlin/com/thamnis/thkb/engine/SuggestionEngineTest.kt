@@ -257,4 +257,55 @@ class SuggestionEngineTest {
             assertFalse("Duplicate id ${parsed.id}", !seenIds.add(parsed.id))
         }
     }
+
+    @Test
+    fun swipeDecoderFallbackMatchesBonjourAndDialectWord() {
+        val dict = SuggestionEngine.parseDictionary(sampleJson)
+        val engine = SuggestionEngine(null)
+        val wordTsv = "je\t7500000\nbonjour\t150000\nbon\t200000\n"
+
+        val rows = listOf("azertyuiop" to 0f, "qsdfghjklm" to 100f, "wxcvbn" to 200f)
+        val centers = buildList {
+            for ((rowIdx, pair) in rows.withIndex()) {
+                val (chars, y) = pair
+                val x0 = if (rowIdx == 2) 150f else 0f
+                chars.forEachIndexed { colIdx, ch ->
+                    add(KeyCenterPoint(ch = ch.toString(), x = x0 + colIdx * 100f + 50f, y = y + 50f))
+                }
+            }
+        }
+        val centerMap = centers.associate { it.ch[0] to (it.x to it.y) }
+        fun trace(keys: String): List<SwipeTrailPoint> = keys.mapNotNull { centerMap[it] }
+            .zipWithNext()
+            .flatMap { (a, b) ->
+                (0..4).map { step ->
+                    val t = step / 4f
+                    SwipeTrailPoint(a.first + (b.first - a.first) * t, a.second + (b.second - a.second) * t)
+                }
+            }
+
+        val bonjourHits = engine.decodeSwipeForDictionary(
+            wordTsv = wordTsv,
+            model = dict,
+            contextWords = emptyList(),
+            keyCenters = centers,
+            swipePoints = trace("bonjour"),
+            capitalizeHint = false,
+            maxResults = 3,
+        )
+        assertFalse(bonjourHits.isEmpty())
+        assertEquals("bonjour", bonjourHits[0].word)
+
+        val mogoHits = engine.decodeSwipeForDictionary(
+            wordTsv = wordTsv,
+            model = dict,
+            contextWords = emptyList(),
+            keyCenters = centers,
+            swipePoints = trace("mogo"),
+            capitalizeHint = true,
+            maxResults = 3,
+        )
+        assertFalse(mogoHits.isEmpty())
+        assertEquals("Môgô", mogoHits[0].word)
+    }
 }

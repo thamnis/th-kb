@@ -6,7 +6,19 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.log10
+
+data class KeyCenterPoint(
+    val ch: String,
+    val x: Float,
+    val y: Float,
+)
+
+data class SwipeTrailPoint(
+    val x: Float,
+    val y: Float,
+)
 
 data class SuggestionCandidate(
     val word: String,
@@ -298,6 +310,309 @@ class SuggestionEngine(private val context: Context? = null) {
             }
         }
         return combined.sortedByDescending { it.confidence }.take(maxResults)
+    }
+
+    /**
+     * Decodes a glided swipe path over key centers into ranked word candidates.
+     * Uses native Rust engine on device and a matching Kotlin geometric fallback in JVM tests.
+     */
+    fun decodeSwipePath(
+        layoutId: String,
+        contextWords: List<String>,
+        keyCenters: List<KeyCenterPoint>,
+        swipePoints: List<SwipeTrailPoint>,
+        capitalizeHint: Boolean = false,
+        maxResults: Int = 3,
+    ): List<SuggestionCandidate> {
+        if (keyCenters.isEmpty() || swipePoints.size < 2) return emptyList()
+
+        if (ensureNativeInitialized()) {
+            val centersJson = buildString {
+                append('[')
+                keyCenters.forEachIndexed { idx, kc ->
+                    if (idx > 0) append(',')
+                    append("{\"ch\":\"")
+                    append(kc.ch.replace("\"", ""))
+                    append("\",\"x\":")
+                    append(kc.x)
+                    append(",\"y\":")
+                    append(kc.y)
+                    append('}')
+                }
+                append(']')
+            }
+            val pointsJson = buildString {
+                append('[')
+                swipePoints.forEachIndexed { idx, pt ->
+                    if (idx > 0) append(',')
+                    append("{\"x\":")
+                    append(pt.x)
+                    append(",\"y\":")
+                    append(pt.y)
+                    append('}')
+                }
+                append(']')
+            }
+            val ctxJoined = contextWords.joinToString("\u001F")
+            val json = NativeSuggestionBridge.nativeDecodeSwipe(
+                layoutId = layoutId,
+                contextJoined = ctxJoined,
+                keyCentersJson = centersJson,
+                swipePointsJson = pointsJson,
+                capitalizeHint = capitalizeHint,
+                maxResults = maxResults,
+            )
+            if (json.isNotEmpty()) {
+                return parseNativeCandidates(json)
+            }
+        }
+
+        val fallbackIdx = getFallbackIndex(layoutId)
+        val mergedOverlay = fallbackDialectIndex
+        return decodeSwipeFallback(
+            base = fallbackIdx,
+            overlay = mergedOverlay,
+            contextWords = contextWords,
+            keyCenters = keyCenters,
+            swipePoints = swipePoints,
+            capitalizeHint = capitalizeHint,
+            maxResults = maxResults,
+        )
+    }
+
+    internal fun decodeSwipeForDictionary(
+        wordTsv: String,
+        model: DictionaryModel,
+        contextWords: List<String>,
+        keyCenters: List<KeyCenterPoint>,
+        swipePoints: List<SwipeTrailPoint>,
+        capitalizeHint: Boolean = false,
+        maxResults: Int = 3,
+    ): List<SuggestionCandidate> {
+        val index = buildIndexedFallback(wordTsv, model)
+        return decodeSwipeFallback(
+            base = index,
+            overlay = fallbackDialectIndex,
+            contextWords = contextWords,
+            keyCenters = keyCenters,
+            swipePoints = swipePoints,
+            capitalizeHint = capitalizeHint,
+            maxResults = maxResults,
+        )
+    }
+
+    private fun decodeSwipeFallback(
+        base: IndexedFallbackModel,
+        overlay: IndexedFallbackModel?,
+        contextWords: List<String>,
+        keyCenters: List<KeyCenterPoint>,
+        swipePoints: List<SwipeTrailPoint>,
+        capitalizeHint: Boolean,
+        maxResults: Int,
+    ): List<SuggestionCandidate> {
+        val centersMap = mutableMapOf<Char, Pair<Double, Double>>()
+        for (kc in keyCenters) {
+            val clean = stripAccents(kc.ch.lowercase(Locale.ROOT))
+            val ch = clean.firstOrNull() ?: continue
+            if (ch.isLetter()) {
+                centersMap[ch] = kc.x.toDouble() to kc.y.toDouble()
+            }
+        }
+        if (centersMap.isEmpty() || swipePoints.size < 2) return emptyList()
+
+        val keyUnit = centersMap.entries.mapNotNull { (ca, pa) ->
+            centersMap.entries
+                .filter { it.key != ca }
+                .minOfOrNull { (_, pb) -> hypot(pa.first - pb.first, pa.second - pb.second) }
+        }.sorted().let { list ->
+            if (list.isEmpty()) 80.0 else list[list.size / 2].coerceAtLeast(24.0)
+        }
+
+        val resampled = resampleSwipePath(swipePoints, 28) ?: return emptyList()
+        val (pts, totalLen) = resampled
+        if (totalLen < keyUnit * 0.45) return emptyList()
+
+        val startPt = pts.first()
+        val endPt = pts.last()
+        val startChars = centersMap.entries
+            .map { it.key to hypot(it.value.first - startPt.first, it.value.second - startPt.second) }
+            .filter { it.second <= keyUnit * 1.4 }
+            .sortedBy { it.second }
+            .take(4)
+            .map { it.first }
+            .toSet()
+        val endChars = centersMap.entries
+            .map { it.key to hypot(it.value.first - endPt.first, it.value.second - endPt.second) }
+            .filter { it.second <= keyUnit * 1.4 }
+            .sortedBy { it.second }
+            .take(4)
+            .map { it.first }
+            .toSet()
+        if (startChars.isEmpty() || endChars.isEmpty()) return emptyList()
+
+        val blockedSet = personalState.blocked
+        val ranked = mutableMapOf<String, Pair<String, Double>>()
+        fun evaluateEntries(idx: IndexedFallbackModel, overlayBoost: Double) {
+            for (startCh in startChars) {
+                val bucket = idx.prefix1[startCh] ?: continue
+                for (entryIdx in bucket) {
+                    val entry = idx.entries[entryIdx]
+                    if (entry.clean.length < 2 || blockedSet.contains(entry.canonical.lowercase(Locale.ROOT))) continue
+                    val lastCh = entry.clean.lastOrNull { it.isLetter() } ?: continue
+                    if (lastCh !in endChars) continue
+                    val score = scoreSwipeFallbackWord(
+                        cleanWord = entry.clean,
+                        logFreq = (entry.logFreq / 100.0) + overlayBoost,
+                        centers = centersMap,
+                        resampled = pts,
+                        totalLen = totalLen,
+                        keyUnit = keyUnit,
+                    ) ?: continue
+                    val lower = entry.canonical.lowercase(Locale.ROOT)
+                    val prev = ranked[lower]
+                    if (prev == null || score > prev.second) {
+                        ranked[lower] = entry.canonical to score
+                    }
+                }
+            }
+        }
+
+        evaluateEntries(base, 0.0)
+        if (overlay != null) {
+            evaluateEntries(overlay, 0.6)
+        }
+
+        val casing = if (capitalizeHint) CasingStyle.TITLE else CasingStyle.LOWER
+        return ranked.values
+            .sortedByDescending { it.second }
+            .take(maxResults.coerceAtLeast(1))
+            .map { (w, s) ->
+                SuggestionCandidate(
+                    word = applyCasing(w, casing),
+                    confidence = s,
+                    isExact = false,
+                )
+            }
+    }
+
+    private fun resampleSwipePath(
+        raw: List<SwipeTrailPoint>,
+        targetCount: Int,
+    ): Pair<List<Pair<Double, Double>>, Double>? {
+        if (raw.size < 2 || targetCount < 2) return null
+        val cleaned = mutableListOf<Pair<Double, Double>>()
+        for (pt in raw) {
+            val p = pt.x.toDouble() to pt.y.toDouble()
+            val last = cleaned.lastOrNull()
+            if (last == null || hypot(p.first - last.first, p.second - last.second) >= 2.0) {
+                cleaned.add(p)
+            }
+        }
+        if (cleaned.size < 2) cleaned.add(raw.last().x.toDouble() to raw.last().y.toDouble())
+        val cumLens = DoubleArray(cleaned.size)
+        for (i in 1 until cleaned.size) {
+            cumLens[i] = cumLens[i - 1] + hypot(
+                cleaned[i].first - cleaned[i - 1].first,
+                cleaned[i].second - cleaned[i - 1].second,
+            )
+        }
+        val totalLen = cumLens.last()
+        if (totalLen < 12.0) return null
+        val out = ArrayList<Pair<Double, Double>>(targetCount)
+        var segIdx = 0
+        for (step in 0 until targetCount) {
+            val targetD = (step.toDouble() / (targetCount - 1)) * totalLen
+            while (segIdx + 1 < cumLens.size && cumLens[segIdx + 1] < targetD) segIdx++
+            if (segIdx + 1 >= cleaned.size) {
+                out.add(cleaned.last())
+            } else {
+                val span = (cumLens[segIdx + 1] - cumLens[segIdx]).coerceAtLeast(1e-6)
+                val t = ((targetD - cumLens[segIdx]) / span).coerceIn(0.0, 1.0)
+                val a = cleaned[segIdx]
+                val b = cleaned[segIdx + 1]
+                out.add((a.first + (b.first - a.first) * t) to (a.second + (b.second - a.second) * t))
+            }
+        }
+        return out to totalLen
+    }
+
+    private fun scoreSwipeFallbackWord(
+        cleanWord: String,
+        logFreq: Double,
+        centers: Map<Char, Pair<Double, Double>>,
+        resampled: List<Pair<Double, Double>>,
+        totalLen: Double,
+        keyUnit: Double,
+    ): Double? {
+        val pts = mutableListOf<Pair<Double, Double>>()
+        var prevCh: Char? = null
+        for (ch in cleanWord) {
+            if (!ch.isLetter() || ch == prevCh) continue
+            val p = centers[ch] ?: return null
+            pts.add(p)
+            prevCh = ch
+        }
+        if (pts.size < 2) return null
+        val startD = hypot(pts.first().first - resampled.first().first, pts.first().second - resampled.first().second)
+        val endD = hypot(pts.last().first - resampled.last().first, pts.last().second - resampled.last().second)
+        if (startD > keyUnit * 1.4 || endD > keyUnit * 1.4) return null
+
+        val m = resampled.size
+        var dp = DoubleArray(m) { Double.POSITIVE_INFINITY }
+        for (j in 0 until minOf(3, m)) {
+            dp[j] = hypot(pts[0].first - resampled[j].first, pts[0].second - resampled[j].second)
+        }
+        for (i in 1 until pts.size) {
+            val next = DoubleArray(m) { Double.POSITIVE_INFINITY }
+            var best = Double.POSITIVE_INFINITY
+            for (j in 0 until m) {
+                if (dp[j] < best) best = dp[j]
+                if (best.isFinite()) {
+                    next[j] = best + hypot(pts[i].first - resampled[j].first, pts[i].second - resampled[j].second)
+                }
+            }
+            dp = next
+        }
+        val forwardSum = (maxOf(0, m - 3) until m).minOf { dp[it] }
+        if (!forwardSum.isFinite()) return null
+        val forwardAvg = forwardSum / pts.size
+        if (forwardAvg > keyUnit * 1.4) return null
+
+        var reverseSum = 0.0
+        for (sp in resampled) {
+            var minD = Double.POSITIVE_INFINITY
+            for (i in 0 until pts.lastIndex) {
+                val a = pts[i]
+                val b = pts[i + 1]
+                val abx = b.first - a.first
+                val aby = b.second - a.second
+                val ab2 = abx * abx + aby * aby
+                val d = if (ab2 <= 1e-6) {
+                    hypot(sp.first - a.first, sp.second - a.second)
+                } else {
+                    val t = (((sp.first - a.first) * abx + (sp.second - a.second) * aby) / ab2).coerceIn(0.0, 1.0)
+                    hypot(sp.first - (a.first + t * abx), sp.second - (a.second + t * aby))
+                }
+                if (d < minD) minD = d
+            }
+            reverseSum += minD
+        }
+        val reverseAvg = reverseSum / m
+        if (reverseAvg > keyUnit * 1.5) return null
+
+        var idealLen = 0.0
+        for (i in 0 until pts.lastIndex) {
+            idealLen += hypot(pts[i + 1].first - pts[i].first, pts[i + 1].second - pts[i].second)
+        }
+        if (totalLen > idealLen * 2.1 + keyUnit * 1.2 || idealLen > totalLen * 2.1 + keyUnit * 1.2) {
+            return null
+        }
+        val lenDiff = abs(totalLen - idealLen)
+        return logFreq * 3.0 -
+            (forwardAvg / keyUnit) * 24.0 -
+            (reverseAvg / keyUnit) * 28.0 -
+            ((startD + endD) / keyUnit) * 20.0 -
+            (lenDiff / keyUnit) * 7.5
     }
 
     /**

@@ -9,6 +9,7 @@
 
 ### Permissions Used
 - `android.permission.VIBRATE`: Used solely for optional tactile keypress haptic feedback.
+- `android.permission.RECORD_AUDIO`: Requested only on demand if you tap **Voice Typing** (`Mic`) to dictate text; prefers Android's on-device speech recognizer (`API 31+`) and never listens in the background.
 - **`INTERNET` permission is NOT requested**: The application has zero network access and cannot send keystrokes, clipboard items, passwords, or usage statistics outside your device.
 
 ### On-Device Local Data

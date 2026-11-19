@@ -58,6 +58,14 @@
 - [x] **Author Rights, Third-Party Licenses & Website Distribution Prep**: Added `NOTICE`, offline `PRIVACY.md`, Adaptive Launcher Icon (`ic_launcher`), ProGuard R8 JNI rules, and website-first plan ([`docs/STORE_DISTRIBUTION.md`](docs/STORE_DISTRIBUTION.md))
 - [ ] **Website Release & Online Community Dialect Hub**: Sign website release APK (`v1.0.0`), launch web directory for community-submitted JSON dialect packs, and optionally prepare F-Droid / Google Play listings later
 
+## `v0.7` — Glided Typing, Voice Typing & UI/UX Polish
+
+- [x] **FUTO-Inspired Glided Typing + Disappearing Comet Trail**: Real-time `175ms` decaying comet trail + native Rust inflection-anchor & Gaussian DP swipe decoder across EN, FR, all 14 Dialect Store packs, and personal dictionary
+- [x] **Word, Sentence & Char-by-Char Gliding**: Continuous sentence gliding through `SPACE` without lifting your finger, plus toggleable **Char-by-Char Glide Mode** (`Glide: Char`) and dwell-to-commit
+- [x] **Reliable Voice Typing**: One-tap toolbar `Mic` button + live waveform panel, `FR`/`EN` toggle, Main-Looper `SpeechRecognizer` with automatic fallback to Android's system voice recognizer (`ACTION_RECOGNIZE_SPEECH`), and lifecycle-safe permission handling
+- [x] **Deterministic IME Undo / Redo Engine**: In-IME text snapshot delta stack (`undoStack` / `redoStack`) working across all Android and Jetpack Compose text fields
+- [x] **Keyboard & Emoji Visual Refinements**: Soft animated key-glide glow, spring-animated spacebar cursor slider, rounded-rectangular alphanum switch button with single accurate `123` / `?#` glide-up indicator, and larger `28.5.sp` tightly-spaced emojis
+
 ## `v1.0` — Public Release
 
 - [ ] Daily-driver stability, touch latency tuning, and `v0.x` bug fixes
@@ -89,8 +97,6 @@
 
 ## `v2.0` — Intelligence & Productivity Suite
 
-- [ ] **Glided typing** (swipe path sampling + Rust trie/beam-search decoder)
-- [ ] **Voice typing** (`SpeechRecognizer` / offline ASR)
 - [ ] **Rambler mode** (continuous long-form voice dictation & structured text cleanup)
 - [ ] **Language level metrics** (user vocabulary richness, CEFR level estimation, and typing stats)
 - [ ] **OCR text scanner** (camera/screenshot optical character recognition directly into the active text field)

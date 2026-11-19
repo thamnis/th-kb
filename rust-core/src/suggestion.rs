@@ -705,6 +705,409 @@ pub fn get_suggestions_from_json(
     )
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct SwipePoint {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct KeyCenter {
+    pub ch: String,
+    pub x: f64,
+    pub y: f64,
+}
+
+fn dist2d(a: (f64, f64), b: (f64, f64)) -> f64 {
+    let dx = a.0 - b.0;
+    let dy = a.1 - b.1;
+    (dx * dx + dy * dy).sqrt()
+}
+
+fn point_to_segment_dist(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
+    let abx = b.0 - a.0;
+    let aby = b.1 - a.1;
+    let ab_len2 = abx * abx + aby * aby;
+    if ab_len2 <= 1e-6 {
+        return dist2d(p, a);
+    }
+    let t = (((p.0 - a.0) * abx + (p.1 - a.1) * aby) / ab_len2).clamp(0.0, 1.0);
+    let proj = (a.0 + t * abx, a.1 + t * aby);
+    dist2d(p, proj)
+}
+
+fn resample_swipe_path(raw: &[SwipePoint], target_count: usize) -> Option<(Vec<(f64, f64)>, f64)> {
+    if raw.len() < 2 || target_count < 2 {
+        return None;
+    }
+    let mut cleaned: Vec<(f64, f64)> = Vec::with_capacity(raw.len());
+    for pt in raw {
+        let p = (pt.x, pt.y);
+        if cleaned.last().is_none_or(|&prev| dist2d(prev, p) >= 2.0) {
+            cleaned.push(p);
+        }
+    }
+    if cleaned.len() < 2 {
+        cleaned.push((raw[raw.len() - 1].x, raw[raw.len() - 1].y));
+    }
+
+    let mut cum_lens = Vec::with_capacity(cleaned.len());
+    cum_lens.push(0.0);
+    for pair in cleaned.windows(2) {
+        let seg = dist2d(pair[0], pair[1]);
+        let prev = *cum_lens.last().unwrap_or(&0.0);
+        cum_lens.push(prev + seg);
+    }
+    let total_len = *cum_lens.last().unwrap_or(&0.0);
+    if total_len < 12.0 {
+        return None;
+    }
+
+    let mut out = Vec::with_capacity(target_count);
+    let mut seg_idx = 0usize;
+    for step in 0..target_count {
+        let target_d = (step as f64 / (target_count - 1) as f64) * total_len;
+        while seg_idx + 1 < cum_lens.len() && cum_lens[seg_idx + 1] < target_d {
+            seg_idx += 1;
+        }
+        if seg_idx + 1 >= cleaned.len() {
+            out.push(cleaned[cleaned.len() - 1]);
+        } else {
+            let d0 = cum_lens[seg_idx];
+            let d1 = cum_lens[seg_idx + 1];
+            let span = (d1 - d0).max(1e-6);
+            let t = ((target_d - d0) / span).clamp(0.0, 1.0);
+            let p0 = cleaned[seg_idx];
+            let p1 = cleaned[seg_idx + 1];
+            out.push((p0.0 + (p1.0 - p0.0) * t, p0.1 + (p1.1 - p0.1) * t));
+        }
+    }
+    Some((out, total_len))
+}
+
+fn estimate_key_unit(centers: &HashMap<char, (f64, f64)>) -> f64 {
+    let mut min_dists: Vec<f64> = centers
+        .iter()
+        .filter_map(|(&ch_a, &pa)| {
+            centers
+                .iter()
+                .filter(|(&ch_b, _)| ch_b != ch_a)
+                .map(|(_, &pb)| dist2d(pa, pb))
+                .min_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal))
+        })
+        .collect();
+    if min_dists.is_empty() {
+        return 80.0;
+    }
+    min_dists.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+    min_dists[min_dists.len() / 2].max(24.0)
+}
+
+/// FUTO/LatinIME-inspired inflection detector: extracts sharp turning points (corners)
+/// along the resampled gesture path so candidate words that match user pivot keys win.
+fn detect_inflection_points(resampled: &[(f64, f64)], key_unit: f64) -> Vec<((f64, f64), f64)> {
+    let n = resampled.len();
+    if n < 5 {
+        return Vec::new();
+    }
+    let min_arm = key_unit * 0.18;
+    let mut raw_corners: Vec<(usize, (f64, f64), f64)> = Vec::new();
+    for i in 2..(n - 2) {
+        let p_prev = resampled[i - 2];
+        let p_curr = resampled[i];
+        let p_next = resampled[i + 2];
+        let ux = p_curr.0 - p_prev.0;
+        let uy = p_curr.1 - p_prev.1;
+        let vx = p_next.0 - p_curr.0;
+        let vy = p_next.1 - p_curr.1;
+        let u_len = (ux * ux + uy * uy).sqrt();
+        let v_len = (vx * vx + vy * vy).sqrt();
+        if u_len < min_arm || v_len < min_arm {
+            continue;
+        }
+        let cos_theta = ((ux * vx + uy * vy) / (u_len * v_len)).clamp(-1.0, 1.0);
+        if cos_theta < 0.72 {
+            let sharpness = (0.75 - cos_theta).clamp(0.05, 1.5);
+            if let Some(last) = raw_corners.last_mut() {
+                if i <= last.0 + 2 {
+                    if sharpness > last.2 {
+                        *last = (i, p_curr, sharpness);
+                    }
+                    continue;
+                }
+            }
+            raw_corners.push((i, p_curr, sharpness));
+        }
+    }
+    raw_corners
+        .into_iter()
+        .map(|(_, pt, weight)| (pt, weight))
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn score_swipe_word(
+    clean_word: &str,
+    log_freq: f64,
+    context_bonus: f64,
+    centers: &HashMap<char, (f64, f64)>,
+    resampled: &[(f64, f64)],
+    inflections: &[((f64, f64), f64)],
+    total_len: f64,
+    key_unit: f64,
+) -> Option<f64> {
+    let mut dedup_pts: Vec<(f64, f64)> = Vec::new();
+    let mut prev_ch: Option<char> = None;
+    for ch in clean_word.chars() {
+        if !ch.is_alphabetic() {
+            continue;
+        }
+        if Some(ch) == prev_ch {
+            continue;
+        }
+        let &pt = centers.get(&ch)?;
+        dedup_pts.push(pt);
+        prev_ch = Some(ch);
+    }
+
+    if dedup_pts.is_empty() {
+        return None;
+    }
+    if dedup_pts.len() == 1 {
+        // Double-letter words on one key require short localized swipe
+        let d_start = dist2d(dedup_pts[0], resampled[0]);
+        let d_end = dist2d(dedup_pts[0], resampled[resampled.len() - 1]);
+        if d_start > key_unit * 0.9 || d_end > key_unit * 0.9 || total_len > key_unit * 1.4 {
+            return None;
+        }
+        return Some(log_freq * 8.0 + context_bonus - ((d_start + d_end) / key_unit) * 14.0);
+    }
+
+    let k = dedup_pts.len();
+    let m = resampled.len();
+    let start_d = dist2d(dedup_pts[0], resampled[0]);
+    let end_d = dist2d(dedup_pts[k - 1], resampled[m - 1]);
+    if start_d > key_unit * 1.4 || end_d > key_unit * 1.4 {
+        return None;
+    }
+
+    // Monotone DP alignment of k key centers onto M resampled swipe points
+    let mut dp = vec![f64::INFINITY; m];
+    for (j, dp_slot) in dp.iter_mut().enumerate().take(m.min(3)) {
+        *dp_slot = dist2d(dedup_pts[0], resampled[j]);
+    }
+    for &key_pt in dedup_pts.iter().skip(1) {
+        let mut next = vec![f64::INFINITY; m];
+        let mut running_best = f64::INFINITY;
+        for (j, &swipe_pt) in resampled.iter().enumerate() {
+            running_best = running_best.min(dp[j]);
+            if running_best.is_finite() {
+                next[j] = running_best + dist2d(key_pt, swipe_pt);
+            }
+        }
+        dp = next;
+    }
+    let forward_sum = dp[m.saturating_sub(3)..m]
+        .iter()
+        .copied()
+        .fold(f64::INFINITY, f64::min);
+    if !forward_sum.is_finite() {
+        return None;
+    }
+    let forward_avg = forward_sum / (k as f64);
+    if forward_avg > key_unit * 1.4 {
+        return None;
+    }
+
+    // Reverse fidelity: measure swipe points' distance to the word's polyline segments
+    let mut reverse_sum = 0.0;
+    for &sp in resampled {
+        let mut best_seg_d = f64::INFINITY;
+        for seg in dedup_pts.windows(2) {
+            best_seg_d = best_seg_d.min(point_to_segment_dist(sp, seg[0], seg[1]));
+        }
+        reverse_sum += best_seg_d;
+    }
+    let reverse_avg = reverse_sum / (m as f64);
+    if reverse_avg > key_unit * 1.5 {
+        return None;
+    }
+
+    // Inflection/corner anchor alignment: sharp turns in user gesture should land near word keys
+    let mut corner_penalty = 0.0;
+    for &(corner_pt, weight) in inflections {
+        let min_key_d = dedup_pts
+            .iter()
+            .map(|&kp| dist2d(kp, corner_pt))
+            .fold(f64::INFINITY, f64::min);
+        corner_penalty += (min_key_d / key_unit) * 11.0 * weight;
+    }
+
+    let ideal_len: f64 = dedup_pts.windows(2).map(|seg| dist2d(seg[0], seg[1])).sum();
+    if total_len > ideal_len * 2.1 + key_unit * 1.2 || ideal_len > total_len * 2.1 + key_unit * 1.2
+    {
+        return None;
+    }
+    let len_diff = (total_len - ideal_len).abs();
+
+    let sigma2 = 2.0 * (key_unit * 0.68).powi(2);
+    let gaussian_endpoints =
+        ((-start_d * start_d / sigma2).exp() + (-end_d * end_d / sigma2).exp()) * 8.0;
+
+    let score = log_freq * 3.0 + context_bonus * 0.25 + gaussian_endpoints
+        - (forward_avg / key_unit) * 24.0
+        - (reverse_avg / key_unit) * 26.0
+        - ((start_d + end_d) / key_unit) * 18.0
+        - corner_penalty
+        - (len_diff / key_unit) * 7.5;
+
+    Some(score)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn decode_swipe_with_overlay(
+    base: &SuggestionIndex,
+    overlay: Option<&SuggestionIndex>,
+    personal: Option<&PersonalModel>,
+    context_words: &[String],
+    centers_list: &[KeyCenter],
+    swipe_points: &[SwipePoint],
+    capitalize_hint: bool,
+    max_results: usize,
+) -> Vec<SuggestionCandidate> {
+    let mut centers: HashMap<char, (f64, f64)> = HashMap::new();
+    for kc in centers_list {
+        let clean = strip_accents(&kc.ch.to_lowercase());
+        if let Some(ch) = clean.chars().next() {
+            if ch.is_alphabetic() {
+                centers.insert(ch, (kc.x, kc.y));
+            }
+        }
+    }
+    if centers.is_empty() {
+        return Vec::new();
+    }
+
+    let key_unit = estimate_key_unit(&centers);
+    let Some((resampled, total_len)) = resample_swipe_path(swipe_points, 28) else {
+        return Vec::new();
+    };
+    if total_len < key_unit * 0.45 {
+        return Vec::new();
+    }
+
+    let start_pt = resampled[0];
+    let end_pt = resampled[resampled.len() - 1];
+
+    let mut start_keys: Vec<(char, f64)> = centers
+        .iter()
+        .map(|(&ch, &pt)| (ch, dist2d(pt, start_pt)))
+        .filter(|&(_, d)| d <= key_unit * 2.1)
+        .collect();
+    start_keys.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    start_keys.truncate(4);
+
+    let end_set: HashSet<char> = {
+        let mut ek: Vec<(char, f64)> = centers
+            .iter()
+            .map(|(&ch, &pt)| (ch, dist2d(pt, end_pt)))
+            .filter(|&(_, d)| d <= key_unit * 2.1)
+            .collect();
+        ek.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        ek.truncate(4);
+        ek.into_iter().map(|(ch, _)| ch).collect()
+    };
+
+    if start_keys.is_empty() || end_set.is_empty() {
+        return Vec::new();
+    }
+    let start_chars: HashSet<char> = start_keys.iter().map(|&(ch, _)| ch).collect();
+
+    let is_blocked = |word: &str| personal.is_some_and(|p| p.is_blocked(word));
+    let inflections = detect_inflection_points(&resampled, key_unit);
+    let mut best_by_lower: HashMap<String, (String, f64)> = HashMap::new();
+
+    let mut score_entry =
+        |canonical: &str, clean: &str, log_freq: f64, ctx_source: &SuggestionIndex| {
+            if clean.chars().count() < 2 || is_blocked(canonical) {
+                return;
+            }
+            let last_alpha = clean.chars().rev().find(|c| c.is_alphabetic());
+            if !last_alpha.is_some_and(|c| end_set.contains(&c)) {
+                return;
+            }
+            let lower = canonical.to_lowercase();
+            let ctx_bonus = ctx_source.context_boost(&lower, context_words, true, personal);
+            if let Some(score) = score_swipe_word(
+                clean,
+                log_freq,
+                ctx_bonus,
+                &centers,
+                &resampled,
+                &inflections,
+                total_len,
+                key_unit,
+            ) {
+                best_by_lower
+                    .entry(lower)
+                    .and_modify(|existing| {
+                        if score > existing.1 {
+                            *existing = (canonical.to_string(), score);
+                        }
+                    })
+                    .or_insert_with(|| (canonical.to_string(), score));
+            }
+        };
+
+    for &start_ch in &start_chars {
+        if let Some(indices) = base.prefix1.get(&start_ch) {
+            for &idx in indices {
+                let entry = &base.entries[idx];
+                score_entry(&entry.canonical, &entry.clean, entry.log_freq, base);
+            }
+        }
+        if let Some(ov) = overlay {
+            if let Some(indices) = ov.prefix1.get(&start_ch) {
+                for &idx in indices {
+                    let entry = &ov.entries[idx];
+                    // Give active dialect packs a slight boost over obscure generic entries
+                    score_entry(&entry.canonical, &entry.clean, entry.log_freq + 0.6, ov);
+                }
+            }
+        }
+    }
+
+    if let Some(p) = personal {
+        for (word, &cnt) in &p.words {
+            let clean = strip_accents(&word.to_lowercase());
+            let first_ch = clean.chars().next();
+            if first_ch.is_some_and(|c| start_chars.contains(&c)) {
+                let boost_freq = (f64::from(cnt) + 1.0).log10() + 5.4;
+                score_entry(word, &clean, boost_freq, base);
+            }
+        }
+    }
+
+    let casing = if capitalize_hint {
+        CasingStyle::Title
+    } else {
+        CasingStyle::Lower
+    };
+
+    let mut ranked: Vec<(String, f64)> = best_by_lower.into_values().collect();
+    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    ranked
+        .into_iter()
+        .take(max_results.max(1))
+        .map(|(word, score)| SuggestionCandidate {
+            word: apply_casing(&word, casing),
+            confidence: score,
+            is_exact: false,
+        })
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // Global cached engine + Android JNI entrypoints
 // ---------------------------------------------------------------------------
@@ -971,6 +1374,69 @@ pub extern "system" fn Java_com_thamnis_thkb_engine_NativeSuggestionBridge_nativ
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+#[no_mangle]
+pub extern "system" fn Java_com_thamnis_thkb_engine_NativeSuggestionBridge_nativeDecodeSwipe(
+    mut env: jni::JNIEnv,
+    _class: jni::objects::JClass,
+    layout_id: jni::objects::JString,
+    context_joined: jni::objects::JString,
+    key_centers_json: jni::objects::JString,
+    swipe_points_json: jni::objects::JString,
+    capitalize_hint: jni::sys::jboolean,
+    max_results: jni::sys::jint,
+) -> jni::sys::jstring {
+    let read_str = |env: &mut jni::JNIEnv, s: jni::objects::JString| -> String {
+        env.get_string(&s)
+            .map(|js| js.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+
+    let layout_s = read_str(&mut env, layout_id);
+    let ctx_s = read_str(&mut env, context_joined);
+    let centers_s = read_str(&mut env, key_centers_json);
+    let points_s = read_str(&mut env, swipe_points_json);
+
+    let context_words: Vec<String> = ctx_s
+        .split('\u{001F}')
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
+        .collect();
+
+    let centers: Vec<KeyCenter> = serde_json::from_str(&centers_s).unwrap_or_default();
+    let points: Vec<SwipePoint> = serde_json::from_str(&points_s).unwrap_or_default();
+    let is_fr = layout_s.contains("fr") || layout_s.contains("ci");
+
+    let candidates = if let Ok(guard) = engine_mutex().lock() {
+        let index_opt = if is_fr {
+            guard.fr.as_ref()
+        } else {
+            guard.en.as_ref()
+        };
+        index_opt
+            .map(|idx| {
+                decode_swipe_with_overlay(
+                    idx,
+                    guard.dialect_overlay.as_ref(),
+                    Some(&guard.personal),
+                    &context_words,
+                    &centers,
+                    &points,
+                    capitalize_hint != 0,
+                    max_results.max(1) as usize,
+                )
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    let json = serde_json::to_string(&candidates).unwrap_or_else(|_| "[]".to_string());
+    env.new_string(json)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1147,5 +1613,67 @@ mod tests {
         );
         assert!(!next_hits.is_empty());
         assert_eq!(next_hits[0].word, "request");
+    }
+
+    fn azerty_centers() -> Vec<KeyCenter> {
+        let rows = [
+            ("azertyuiop", 0.0, 0.0),
+            ("qsdfghjklm", 0.0, 100.0),
+            ("wxcvbn", 150.0, 200.0),
+        ];
+        let mut out = Vec::new();
+        for (row, x0, y) in rows {
+            for (i, ch) in row.chars().enumerate() {
+                out.push(KeyCenter {
+                    ch: ch.to_string(),
+                    x: x0 + (i as f64) * 100.0 + 50.0,
+                    y: y + 50.0,
+                });
+            }
+        }
+        out
+    }
+
+    fn trace_keys(centers: &[KeyCenter], keys: &str) -> Vec<SwipePoint> {
+        let map: HashMap<char, (f64, f64)> = centers
+            .iter()
+            .filter_map(|kc| kc.ch.chars().next().map(|c| (c, (kc.x, kc.y))))
+            .collect();
+        let mut anchors = Vec::new();
+        for ch in keys.chars() {
+            if let Some(&pt) = map.get(&ch) {
+                anchors.push(pt);
+            }
+        }
+        let mut pts = Vec::new();
+        for pair in anchors.windows(2) {
+            for step in 0..=4 {
+                let t = step as f64 / 4.0;
+                pts.push(SwipePoint {
+                    x: pair[0].0 + (pair[1].0 - pair[0].0) * t + 4.0,
+                    y: pair[0].1 + (pair[1].1 - pair[0].1) * t - 3.0,
+                });
+            }
+        }
+        pts
+    }
+
+    #[test]
+    fn swipe_decoder_matches_bonjour_and_dialect_words() {
+        let idx = sample_index();
+        let centers = azerty_centers();
+
+        let bonjour_path = trace_keys(&centers, "bonjour");
+        let bonjour_hits =
+            decode_swipe_with_overlay(&idx, None, None, &[], &centers, &bonjour_path, false, 3);
+        assert!(!bonjour_hits.is_empty());
+        assert_eq!(bonjour_hits[0].word, "bonjour");
+
+        // Dialect overlay word with accents ("môgô") traced smoothly across m -> o -> g -> o
+        let mogo_path = trace_keys(&centers, "mogo");
+        let mogo_hits =
+            decode_swipe_with_overlay(&idx, None, None, &[], &centers, &mogo_path, false, 3);
+        assert!(!mogo_hits.is_empty());
+        assert_eq!(mogo_hits[0].word, "môgô");
     }
 }

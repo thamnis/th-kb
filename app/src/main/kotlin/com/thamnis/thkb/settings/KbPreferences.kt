@@ -26,6 +26,8 @@ data class KbSettings(
     val favoriteItems: Set<String> = DEFAULT_FAVORITES,
     val recentEmojis: List<String> = emptyList(),
     val suggestionsEnabled: Boolean = true,
+    val glideTypingEnabled: Boolean = true,
+    val glideCharByChar: Boolean = false,
     val autocompleteMode: String = AUTOCOMPLETE_MODE_ADVANCED,
     val ivorianFrenchEnabled: Boolean = true,
 ) {
@@ -111,6 +113,16 @@ class KbPreferences(context: Context) {
         _settings.value = readSettings()
     }
 
+    fun setGlideTypingEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_GLIDE_TYPING_ENABLED, enabled).apply()
+        _settings.value = readSettings()
+    }
+
+    fun setGlideCharByChar(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_GLIDE_CHAR_BY_CHAR, enabled).apply()
+        _settings.value = readSettings()
+    }
+
     fun setAutocompleteMode(mode: String) {
         prefs.edit().putString(KEY_AUTOCOMPLETE_MODE, mode).apply()
         _settings.value = readSettings()
@@ -160,6 +172,8 @@ class KbPreferences(context: Context) {
             .putStringSet(KEY_FAVORITES, restored.favoriteItems)
             .putString(KEY_RECENT_EMOJIS, restored.recentEmojis.joinToString("\u001F"))
             .putBoolean(KEY_SUGGESTIONS_ENABLED, restored.suggestionsEnabled)
+            .putBoolean(KEY_GLIDE_TYPING_ENABLED, restored.glideTypingEnabled)
+            .putBoolean(KEY_GLIDE_CHAR_BY_CHAR, restored.glideCharByChar)
             .putString(KEY_AUTOCOMPLETE_MODE, restored.autocompleteMode)
             .putBoolean(KEY_IVORIAN_FRENCH_ENABLED, restored.ivorianFrenchEnabled)
             .apply()
@@ -183,6 +197,8 @@ class KbPreferences(context: Context) {
             .putStringSet(KEY_FAVORITES, restored.favoriteItems)
             .putString(KEY_RECENT_EMOJIS, restored.recentEmojis.joinToString("\u001F"))
             .putBoolean(KEY_SUGGESTIONS_ENABLED, restored.suggestionsEnabled)
+            .putBoolean(KEY_GLIDE_TYPING_ENABLED, restored.glideTypingEnabled)
+            .putBoolean(KEY_GLIDE_CHAR_BY_CHAR, restored.glideCharByChar)
             .putString(KEY_AUTOCOMPLETE_MODE, restored.autocompleteMode)
             .putBoolean(KEY_IVORIAN_FRENCH_ENABLED, restored.ivorianFrenchEnabled)
             .apply()
@@ -209,6 +225,8 @@ class KbPreferences(context: Context) {
             ?.filter { it.isNotEmpty() }
             .orEmpty(),
         suggestionsEnabled = prefs.getBoolean(KEY_SUGGESTIONS_ENABLED, true),
+        glideTypingEnabled = prefs.getBoolean(KEY_GLIDE_TYPING_ENABLED, true),
+        glideCharByChar = prefs.getBoolean(KEY_GLIDE_CHAR_BY_CHAR, false),
         autocompleteMode = prefs.getString(KEY_AUTOCOMPLETE_MODE, KbSettings.AUTOCOMPLETE_MODE_ADVANCED)
             ?: KbSettings.AUTOCOMPLETE_MODE_ADVANCED,
         ivorianFrenchEnabled = prefs.getBoolean(KEY_IVORIAN_FRENCH_ENABLED, true),
@@ -229,6 +247,8 @@ class KbPreferences(context: Context) {
         private const val KEY_FAVORITES = "favorite_items"
         private const val KEY_RECENT_EMOJIS = "recent_emojis"
         private const val KEY_SUGGESTIONS_ENABLED = "suggestions_enabled"
+        private const val KEY_GLIDE_TYPING_ENABLED = "glide_typing_enabled"
+        private const val KEY_GLIDE_CHAR_BY_CHAR = "glide_char_by_char"
         private const val KEY_AUTOCOMPLETE_MODE = "autocomplete_mode"
         private const val KEY_IVORIAN_FRENCH_ENABLED = "ivorian_french_enabled"
     }
@@ -276,6 +296,8 @@ object KbBackupCodec {
             appendLine("  \"resetForwardDeleteOnChar\": ${settings.resetForwardDeleteOnChar},")
             appendLine("  \"emojiGridColumns\": ${settings.emojiGridColumns},")
             appendLine("  \"suggestionsEnabled\": ${settings.suggestionsEnabled},")
+            appendLine("  \"glideTypingEnabled\": ${settings.glideTypingEnabled},")
+            appendLine("  \"glideCharByChar\": ${settings.glideCharByChar},")
             appendLine("  \"autocompleteMode\": ${esc(settings.autocompleteMode)},")
             appendLine("  \"ivorianFrenchEnabled\": ${settings.ivorianFrenchEnabled},")
             appendLine("  \"favoriteItems\": ${arr(settings.favoriteItems)},")
@@ -383,6 +405,8 @@ object KbBackupCodec {
             favoriteItems = favorites,
             recentEmojis = recents,
             suggestionsEnabled = boolVal("suggestionsEnabled", true),
+            glideTypingEnabled = boolVal("glideTypingEnabled", true),
+            glideCharByChar = boolVal("glideCharByChar", false),
             autocompleteMode = stringVal("autocompleteMode", KbSettings.AUTOCOMPLETE_MODE_ADVANCED),
             ivorianFrenchEnabled = boolVal("ivorianFrenchEnabled", true),
         )

@@ -39,4 +39,13 @@ internal object NativeSuggestionBridge {
     )
 
     external fun nativeBlockWord(word: String)
+
+    external fun nativeDecodeSwipe(
+        layoutId: String,
+        contextJoined: String,
+        keyCentersJson: String,
+        swipePointsJson: String,
+        capitalizeHint: Boolean,
+        maxResults: Int,
+    ): String
 }

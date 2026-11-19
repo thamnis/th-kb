@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0-alpha.1] - 2026-11-19
+
+### Added
+- **FUTO-Inspired Glided Typing (Disappearing Comet Trail + Word, Sentence & Char-by-Char Gliding)**:
+  - Native Rust swipe decoder (`decode_swipe_with_overlay`) combining inflection/corner anchor detection, Gaussian key proximity, and monotone DP trajectory alignment across EN, FR, all 14 Dialect Store packs, and personal dictionary.
+  - Real-time disappearing comet trail (`175ms` decay window) that vanishes smoothly into your fingertip as you glide.
+  - **Continuous Sentence Gliding**: Glide across letters and touch `SPACE` mid-glide to commit the word + space and continue gliding the next word in one unbroken gesture.
+  - **Char-by-Char Glide Mode**: Toggle `Glide: Char` in the toolbar or Settings (or pause/dwell on keys while gliding) to glide-type custom words and full sentences character by character.
+- **Reliable Voice Typing (`VoiceInputManager` + System Voice Fallback)**:
+  - Fixed IME permission & lifecycle race so returning from the microphone permission dialog or system recognizer never closes or resets the Voice panel.
+  - Uses Main-Looper `SpeechRecognizer` with automatic engine fallback and a one-tap **System Voice ↗** recognizer dialog fallback (`ACTION_RECOGNIZE_SPEECH`).
+- **Deterministic IME Snapshot Undo / Redo Engine**:
+  - Added in-IME delta snapshot `undoStack` and `redoStack` (`TextSnapshot`) in `ThKbInputMethodService` so Undo (`↺`) and Redo (`↻`) work reliably in 100% of apps (Jetpack Compose, EditText, WebViews, WhatsApp, Keep).
+- **Animated Glide & Spacebar Cursor Feedback**:
+  - Added soft luminous key-glide indication (`isGlidedOver`) that illuminates and lifts keys smoothly as your finger glides across them.
+  - Added spring-animated sliding cursor thumb (`«  ▬  »`) on the spacebar that shifts left and right in real time while moving the cursor.
+
+### Fixed
+- **Alphanum Switch Button (`?123` / `ABC`)**:
+  - Removed duplicate `"123"` glide-up hint on Row 2 in the symbol-only (`=\<`) layer so only the bottom-left alphanum switch button carries the glide-up indicator.
+  - Fixed glide-up indicator on the Numeric Numpad (`123`) layer to display `"?#"` (and switch to Symbols on glide-up) instead of duplicating `"ABC"`.
+  - Changed the bottom-left alphanum switch button shape from a full capsule pill to a rounded rectangle (`10.dp`) matching control keys.
+- **Larger, Tighter Emoji Grid**:
+  - Reduced inter-emoji grid spacing to `1.dp` and increased 8-column emoji font size to `28.5.sp` for bigger, clearer emojis.
+
 ## [0.6.0-alpha.1] - 2026-11-17
 
 ### Added

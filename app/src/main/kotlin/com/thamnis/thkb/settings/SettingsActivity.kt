@@ -53,6 +53,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Gavel
+import androidx.compose.material.icons.outlined.Gesture
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.LocalHospital
@@ -252,9 +253,10 @@ class SettingsActivity : ComponentActivity() {
                             Your privacy is foundational to th-kb:
 
                             1. Zero Internet Access: th-kb does not ask for or use any network or internet permission. It is physically impossible for the keyboard to transmit what you type anywhere.
-                            2. Local Storage Only: Your learned words, dialect packs, clipboard pins, and to-do items stay strictly inside private storage on your own phone.
-                            3. Password Safety: Passwords, banking PINs, and private numeric fields are never learned or suggested.
-                            4. Full Control: You can export, inspect, edit, or completely erase your personal words at any time.
+                            2. On-Demand Microphone Only: Microphone permission is only requested if you tap Voice Typing, prefers Android's on-device recognizer, and never listens in the background.
+                            3. Local Storage Only: Your learned words, dialect packs, clipboard pins, and to-do items stay strictly inside private storage on your own phone.
+                            4. Password Safety: Passwords, banking PINs, and private numeric fields are never learned or suggested.
+                            5. Full Control: You can export, inspect, edit, or completely erase your personal words at any time.
                         """.trimIndent(),
                     ),
                     LicenseArticle(
@@ -359,6 +361,52 @@ class SettingsActivity : ComponentActivity() {
                         ) {
                             when (page) {
                                 SettingsPage.MAIN -> {
+                                    Surface(
+                                        color = Color.White,
+                                        shape = RoundedCornerShape(18.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFEAECEF)),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "th-kb · Privacy-First Keyboard",
+                                                    color = SettingsTextPrimary,
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = if (settings.layoutId == "azerty_fr") {
+                                                        "French AZERTY · Glide & Voice Ready"
+                                                    } else {
+                                                        "English QWERTY · Glide & Voice Ready"
+                                                    },
+                                                    color = SettingsTextSecondary,
+                                                    fontSize = 12.5.sp,
+                                                )
+                                            }
+                                            Surface(
+                                                color = SettingsPillSoftBlue,
+                                                shape = RoundedCornerShape(50),
+                                            ) {
+                                                Text(
+                                                    text = "100% Offline",
+                                                    color = SettingsAccentBlue,
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                )
+                                            }
+                                        }
+                                    }
+
                                     SettingsGroup(title = "Getting Started") {
                                         SettingsNavRow(
                                             icon = Icons.Outlined.Keyboard,
@@ -430,6 +478,24 @@ class SettingsActivity : ComponentActivity() {
                                             checked = settings.suggestionsEnabled,
                                             onCheckedChange = { preferences.setSuggestionsEnabled(it) },
                                         )
+                                        SettingsRowDivider()
+                                        SettingsSwitchItem(
+                                            icon = Icons.Outlined.Gesture,
+                                            title = "Glide Typing",
+                                            subtitle = "Slide across letters & Space to glide words or whole sentences",
+                                            checked = settings.glideTypingEnabled,
+                                            onCheckedChange = { preferences.setGlideTypingEnabled(it) },
+                                        )
+                                        if (settings.glideTypingEnabled) {
+                                            SettingsRowDivider()
+                                            SettingsSwitchItem(
+                                                icon = Icons.Outlined.TouchApp,
+                                                title = "Char-by-Char Glide Mode",
+                                                subtitle = "Type custom words & sentences letter-by-letter as you glide",
+                                                checked = settings.glideCharByChar,
+                                                onCheckedChange = { preferences.setGlideCharByChar(it) },
+                                            )
+                                        }
                                         SettingsRowDivider()
                                         val enabledDialectCount = dialectState.enabledPackIds.count { id ->
                                             dialectState.availablePacks.any { it.id == id }
