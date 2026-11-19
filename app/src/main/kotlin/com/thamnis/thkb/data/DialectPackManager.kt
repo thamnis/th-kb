@@ -19,6 +19,8 @@ data class DialectPack(
     val description: String,
     val wordCount: Int,
     val sampleWords: List<String>,
+    val allWords: List<String> = emptyList(),
+    val samplePhrases: List<String> = emptyList(),
     val isBuiltIn: Boolean = true,
     val rawJson: String,
 )
@@ -249,6 +251,31 @@ class DialectPackManager(context: Context) {
                 while (iter.hasNext()) {
                     keys.add(iter.next())
                 }
+                val phrases = mutableListOf<String>()
+                obj.optJSONObject("bigrams")?.let { bObj ->
+                    val bKeys = bObj.keys()
+                    while (bKeys.hasNext()) {
+                        val w1 = bKeys.next()
+                        val inner = bObj.optJSONObject(w1) ?: continue
+                        val iKeys = inner.keys()
+                        while (iKeys.hasNext()) {
+                            val w2 = iKeys.next()
+                            phrases.add("$w1 $w2")
+                        }
+                    }
+                }
+                obj.optJSONObject("trigrams")?.let { tObj ->
+                    val tKeys = tObj.keys()
+                    while (tKeys.hasNext()) {
+                        val w12 = tKeys.next()
+                        val inner = tObj.optJSONObject(w12) ?: continue
+                        val iKeys = inner.keys()
+                        while (iKeys.hasNext()) {
+                            val w3 = iKeys.next()
+                            phrases.add("$w12 $w3")
+                        }
+                    }
+                }
                 DialectPack(
                     id = id,
                     name = name,
@@ -259,6 +286,8 @@ class DialectPackManager(context: Context) {
                     description = obj.optString("description", "Custom dialect pack"),
                     wordCount = keys.size,
                     sampleWords = keys.take(5),
+                    allWords = keys.sortedBy { it.lowercase(Locale.ROOT) },
+                    samplePhrases = phrases.distinct(),
                     isBuiltIn = isBuiltIn,
                     rawJson = rawJson,
                 )

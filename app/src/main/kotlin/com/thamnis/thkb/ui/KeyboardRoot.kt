@@ -1237,6 +1237,7 @@ private fun TouchKeyGrid(
     val glidedKeyTimestamps = remember(rows) { mutableStateMapOf<String, Long>() }
     var activeGlidedKey by remember(rows) { mutableStateOf<String?>(null) }
     var spaceGlideOffsetPx by remember(rows) { mutableStateOf(0f) }
+    var spaceGlideOffsetY by remember(rows) { mutableStateOf(0f) }
     var trailClockMs by remember { mutableStateOf(0L) }
     var activeSwipePointerId by remember(rows) { mutableStateOf<PointerId?>(null) }
     var gridCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -1434,6 +1435,7 @@ private fun TouchKeyGrid(
                                         activeGlidedKey = "SPACE"
                                         glidedKeyTimestamps["SPACE"] = now
                                         spaceGlideOffsetPx = (localPos.x - pointer.startPosition.x).coerceIn(-64f, 64f)
+                                        spaceGlideOffsetY = (localPos.y - pointer.startPosition.y).coerceIn(-24f, 24f)
                                         val stepDx = localPos.x - pointer.lastGlideX
                                         val stepsX = (stepDx / glideStepPx).toInt()
                                         if (stepsX != 0) {
@@ -1659,6 +1661,7 @@ private fun TouchKeyGrid(
                                 activeGlidedKey = null
                                 if (pointer.keyId == "SPACE") {
                                     spaceGlideOffsetPx = 0f
+                                    spaceGlideOffsetY = 0f
                                 }
 
                                 val popup = latestPopup
@@ -1772,6 +1775,7 @@ private fun TouchKeyGrid(
                             isGlidedOver = isKeyGlided,
                             isSpaceGliding = isSpaceGliding,
                             spaceGlideOffsetPx = if (keyId == "SPACE") spaceGlideOffsetPx else 0f,
+                            spaceGlideOffsetY = if (keyId == "SPACE") spaceGlideOffsetY else 0f,
                             returnAction = returnAction,
                             icon = keyIconFor(keyId, returnAction),
                             hint = hint,
@@ -1865,6 +1869,7 @@ private fun RowScope.KeyCap(
     isGlidedOver: Boolean,
     isSpaceGliding: Boolean,
     spaceGlideOffsetPx: Float,
+    spaceGlideOffsetY: Float,
     returnAction: ReturnAction,
     icon: ImageVector?,
     hint: String?,
@@ -1913,6 +1918,14 @@ private fun RowScope.KeyCap(
         ),
         label = "spaceCursorGlideShift",
     )
+    val animatedSpaceShiftY by animateFloatAsState(
+        targetValue = if (isSpaceGliding) spaceGlideOffsetY.coerceIn(-16f, 16f) else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "spaceCursorGlideShiftY",
+    )
 
     Box(
         modifier = Modifier
@@ -1921,6 +1934,10 @@ private fun RowScope.KeyCap(
             .graphicsLayer {
                 scaleX = keyScale
                 scaleY = keyScale
+                if (keyId == "SPACE" && isSpaceGliding) {
+                    translationX = animatedSpaceShiftPx * 0.14f
+                    translationY = animatedSpaceShiftY * 0.35f
+                }
             }
             .onGloballyPositioned(onBoundsChanged)
             .background(KeyShadowColor, shape)
@@ -2002,6 +2019,7 @@ private fun RowScope.KeyCap(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .fillMaxHeight()
                         .padding(horizontal = 10.dp)
                         .align(Alignment.Center),
                     contentAlignment = Alignment.Center,
@@ -2012,29 +2030,53 @@ private fun RowScope.KeyCap(
                             .height(3.dp)
                             .background(ReturnBgColor.copy(alpha = 0.25f), RoundedCornerShape(50)),
                     )
-                    Row(
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .fillMaxHeight(0.62f)
+                            .background(ReturnBgColor.copy(alpha = 0.22f), RoundedCornerShape(50)),
+                    )
+                    Column(
                         modifier = Modifier.graphicsLayer {
                             translationX = animatedSpaceShiftPx
+                            translationY = animatedSpaceShiftY
                         },
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
                     ) {
                         Text(
-                            text = "«",
-                            color = ReturnBgColor,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = "▲",
+                            color = ReturnBgColor.copy(alpha = if (animatedSpaceShiftY < -2f) 1f else 0.55f),
+                            fontSize = 8.sp,
+                            lineHeight = 8.sp,
                         )
-                        Box(
-                            modifier = Modifier
-                                .size(width = 28.dp, height = 6.dp)
-                                .background(ReturnBgColor, RoundedCornerShape(50)),
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = "«",
+                                color = ReturnBgColor,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 28.dp, height = 6.dp)
+                                    .background(ReturnBgColor, RoundedCornerShape(50)),
+                            )
+                            Text(
+                                text = "»",
+                                color = ReturnBgColor,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                         Text(
-                            text = "»",
-                            color = ReturnBgColor,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = "▼",
+                            color = ReturnBgColor.copy(alpha = if (animatedSpaceShiftY > 2f) 1f else 0.55f),
+                            fontSize = 8.sp,
+                            lineHeight = 8.sp,
                         )
                     }
                 }

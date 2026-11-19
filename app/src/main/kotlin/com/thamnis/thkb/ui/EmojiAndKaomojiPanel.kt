@@ -78,6 +78,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -690,21 +692,28 @@ internal fun NativeEmojiGridContent(
     onSelect: (String) -> Unit,
 ) {
     val emojiFontSize = when {
-        gridColumns <= 6 -> 32.sp
-        gridColumns == 7 -> 30.sp
-        gridColumns == 8 -> 28.5.sp
-        else -> 24.sp
+        gridColumns <= 6 -> 36.sp
+        gridColumns == 7 -> 34.sp
+        gridColumns == 8 -> 32.sp
+        else -> 28.sp
+    }
+    val emojiTextStyle = remember(emojiFontSize) {
+        TextStyle(
+            fontSize = emojiFontSize,
+            lineHeight = emojiFontSize,
+            platformStyle = PlatformTextStyle(includeFontPadding = false),
+        )
     }
 
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Fixed(gridColumns.coerceIn(5, 10)),
-        verticalArrangement = Arrangement.spacedBy(1.dp),
-        horizontalArrangement = Arrangement.spacedBy(1.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
         modifier = Modifier
             .fillMaxWidth()
             .height(contentHeight)
-            .padding(horizontal = 2.dp),
+            .padding(horizontal = 0.dp),
     ) {
         sections.forEach { section ->
             item(
@@ -715,9 +724,9 @@ internal fun NativeEmojiGridContent(
                 Text(
                     text = section.category,
                     color = HintTextColor,
-                    fontSize = 13.sp,
+                    fontSize = 12.5.sp,
                     fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
             items(
@@ -727,14 +736,14 @@ internal fun NativeEmojiGridContent(
             ) { emoji ->
                 Box(
                     modifier = Modifier
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(6.dp))
+                        .height(38.dp)
+                        .clip(RoundedCornerShape(4.dp))
                         .clickable { onSelect(emoji) },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = emoji,
-                        fontSize = emojiFontSize,
+                        style = emojiTextStyle,
                     )
                 }
             }

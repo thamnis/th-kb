@@ -127,6 +127,7 @@ private enum class SettingsPage(val title: String) {
     TRY_KEYBOARD("Try Keyboard"),
     LAYOUT("Language & Layout"),
     DIALECT_STORE("Dialect & Jargon Store"),
+    DIALECT_DETAIL("Dialect Vocabulary"),
     PERSONAL_DICT("My Custom Words"),
     BACKUP("Backup & Restore"),
     ABOUT_LICENSES("Author Rights & Licenses"),
@@ -154,16 +155,18 @@ class SettingsActivity : ComponentActivity() {
 
             var currentPage by remember { mutableStateOf(SettingsPage.MAIN) }
             var selectedLicense by remember { mutableStateOf<LicenseArticle?>(null) }
+            var selectedDialectPackId by remember { mutableStateOf<String?>(null) }
+            var dialectWordSearch by remember { mutableStateOf("") }
             var testText by remember { mutableStateOf("") }
             var newCustomWord by remember { mutableStateOf("") }
             var backupStatus by remember { mutableStateOf<String?>(null) }
             var dialectStatus by remember { mutableStateOf<String?>(null) }
 
             BackHandler(enabled = currentPage != SettingsPage.MAIN) {
-                currentPage = if (currentPage == SettingsPage.LICENSE_DETAIL) {
-                    SettingsPage.ABOUT_LICENSES
-                } else {
-                    SettingsPage.MAIN
+                currentPage = when (currentPage) {
+                    SettingsPage.LICENSE_DETAIL -> SettingsPage.ABOUT_LICENSES
+                    SettingsPage.DIALECT_DETAIL -> SettingsPage.DIALECT_STORE
+                    else -> SettingsPage.MAIN
                 }
             }
 
@@ -310,18 +313,21 @@ class SettingsActivity : ComponentActivity() {
                 Scaffold(
                     containerColor = SettingsCanvasBg,
                     topBar = {
+                        val activeDialectName = dialectState.availablePacks
+                            .find { it.id == selectedDialectPackId }
+                            ?.name
                         SettingsTopBar(
-                            title = if (currentPage == SettingsPage.LICENSE_DETAIL) {
-                                selectedLicense?.title ?: "License Details"
-                            } else {
-                                currentPage.title
+                            title = when (currentPage) {
+                                SettingsPage.LICENSE_DETAIL -> selectedLicense?.title ?: "License Details"
+                                SettingsPage.DIALECT_DETAIL -> activeDialectName ?: "Dialect Vocabulary"
+                                else -> currentPage.title
                             },
                             canNavigateBack = currentPage != SettingsPage.MAIN,
                             onBack = {
-                                currentPage = if (currentPage == SettingsPage.LICENSE_DETAIL) {
-                                    SettingsPage.ABOUT_LICENSES
-                                } else {
-                                    SettingsPage.MAIN
+                                currentPage = when (currentPage) {
+                                    SettingsPage.LICENSE_DETAIL -> SettingsPage.ABOUT_LICENSES
+                                    SettingsPage.DIALECT_DETAIL -> SettingsPage.DIALECT_STORE
+                                    else -> SettingsPage.MAIN
                                 }
                             },
                         )
@@ -578,7 +584,7 @@ class SettingsActivity : ComponentActivity() {
                                                 text = "• Sentence Glide: Slide across letters, touch Spacebar, and keep sliding the next word.\n" +
                                                     "• Char-by-Char Glide: Toggle 'Glide: Char' in the toolbar (or pause on a key) to glide letter-by-letter.\n" +
                                                     "• Hold Spacebar: Switch between French AZERTY & English QWERTY.\n" +
-                                                    "• Slide Spacebar: Move the cursor left or right with spring animation.\n" +
+                                                    "• Slide Spacebar: Move the cursor left/right or up/down with 2D spring animation.\n" +
                                                     "• Glide Up on ?123 / ABC: Switch between Numpad (123) and Symbols (?#).",
                                                 fontSize = 13.sp,
                                                 color = SettingsTextSecondary,
@@ -625,7 +631,7 @@ class SettingsActivity : ComponentActivity() {
                                         modifier = Modifier.fillMaxWidth(),
                                     ) {
                                         Text(
-                                            text = "Install jargon packs to use alongside French & English. Enable as many local dialects, abbreviations, or specialized fields as you like!",
+                                            text = "Install jargon packs to use alongside French & English. Tap any pack to explore all its words & expressions, or flip its switch to enable it!",
                                             color = SettingsTextPrimary,
                                             fontSize = 13.sp,
                                             modifier = Modifier.padding(14.dp),
@@ -646,7 +652,7 @@ class SettingsActivity : ComponentActivity() {
                                         }
                                     }
 
-                                    SettingsGroup(title = "Available Jargon & Dialect Packs (${filteredPacks.size})") {
+                                    SettingsGroup(title = "Available Jargon & Dialect Packs (${filteredPacks.size}) · Tap to View Words") {
                                         filteredPacks.forEachIndexed { idx, pack ->
                                             if (idx > 0) SettingsRowDivider()
                                             val isEnabled = pack.id in dialectState.enabledPackIds
@@ -654,6 +660,11 @@ class SettingsActivity : ComponentActivity() {
                                                 pack = pack,
                                                 enabled = isEnabled,
                                                 onToggle = { next -> dialectManager.togglePack(pack.id, next) },
+                                                onInspectWords = {
+                                                    selectedDialectPackId = pack.id
+                                                    dialectWordSearch = ""
+                                                    currentPage = SettingsPage.DIALECT_DETAIL
+                                                },
                                                 onDeleteCustom = if (!pack.isBuiltIn) {
                                                     { dialectManager.removeCustomPack(pack.id) }
                                                 } else {
@@ -692,6 +703,147 @@ class SettingsActivity : ComponentActivity() {
                                                 color = SettingsAccentBlue,
                                                 modifier = Modifier.padding(16.dp),
                                             )
+                                        }
+                                    }
+                                }
+
+                                SettingsPage.DIALECT_DETAIL -> {
+                                    val pack = dialectState.availablePacks
+                                        .find { it.id == selectedDialectPackId }
+                                        ?: dialectState.availablePacks.firstOrNull()
+                                    if (pack != null) {
+                                        val isEnabled = pack.id in dialectState.enabledPackIds
+                                        val query = dialectWordSearch.trim().lowercase(Locale.ROOT)
+                                        val filteredWords = remember(pack.allWords, query) {
+                                            if (query.isEmpty()) {
+                                                pack.allWords
+                                            } else {
+                                                pack.allWords.filter { it.lowercase(Locale.ROOT).contains(query) }
+                                            }
+                                        }
+                                        val filteredPhrases = remember(pack.samplePhrases, query) {
+                                            if (query.isEmpty()) {
+                                                pack.samplePhrases
+                                            } else {
+                                                pack.samplePhrases.filter { it.lowercase(Locale.ROOT).contains(query) }
+                                            }
+                                        }
+
+                                        SettingsGroup(title = "${pack.category} · ${pack.wordCount} Words") {
+                                            Column(
+                                                modifier = Modifier.padding(16.dp),
+                                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = pack.name,
+                                                            color = SettingsTextPrimary,
+                                                            fontSize = 16.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                        )
+                                                        Text(
+                                                            text = "By ${pack.author} · v${pack.version}",
+                                                            color = SettingsAccentBlue,
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Medium,
+                                                        )
+                                                    }
+                                                    Switch(
+                                                        checked = isEnabled,
+                                                        onCheckedChange = { next ->
+                                                            dialectManager.togglePack(pack.id, next)
+                                                        },
+                                                        colors = SwitchDefaults.colors(
+                                                            checkedThumbColor = Color.White,
+                                                            checkedTrackColor = SettingsSwitchGreen,
+                                                            uncheckedThumbColor = Color.White,
+                                                            uncheckedTrackColor = Color(0xFFE5E7EB),
+                                                            uncheckedBorderColor = Color.Transparent,
+                                                        ),
+                                                    )
+                                                }
+                                                Text(
+                                                    text = pack.description,
+                                                    color = SettingsTextSecondary,
+                                                    fontSize = 13.sp,
+                                                    lineHeight = 18.sp,
+                                                )
+                                                OutlinedTextField(
+                                                    value = dialectWordSearch,
+                                                    onValueChange = { dialectWordSearch = it },
+                                                    label = { Text("Search words & expressions in ${pack.name}") },
+                                                    singleLine = true,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                )
+                                            }
+                                        }
+
+                                        if (filteredPhrases.isNotEmpty()) {
+                                            SettingsGroup(title = "Common Expressions & Phrases (${filteredPhrases.size})") {
+                                                FlowRow(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(14.dp),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                                ) {
+                                                    filteredPhrases.forEach { phrase ->
+                                                        Surface(
+                                                            color = SettingsPillSoftBlue,
+                                                            shape = RoundedCornerShape(10.dp),
+                                                            border = BorderStroke(1.dp, Color(0xFFDBEAFE)),
+                                                        ) {
+                                                            Text(
+                                                                text = phrase,
+                                                                color = SettingsAccentBlue,
+                                                                fontSize = 13.sp,
+                                                                fontWeight = FontWeight.Medium,
+                                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        SettingsGroup(title = "Vocabulary Words (${filteredWords.size})") {
+                                            if (filteredWords.isEmpty()) {
+                                                Text(
+                                                    text = "No words match \"$dialectWordSearch\".",
+                                                    color = SettingsTextSecondary,
+                                                    fontSize = 13.sp,
+                                                    modifier = Modifier.padding(16.dp),
+                                                )
+                                            } else {
+                                                FlowRow(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(14.dp),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                                ) {
+                                                    filteredWords.forEach { word ->
+                                                        Surface(
+                                                            color = SettingsCanvasBg,
+                                                            shape = RoundedCornerShape(10.dp),
+                                                            border = BorderStroke(1.dp, SettingsBorderColor),
+                                                        ) {
+                                                            Text(
+                                                                text = word,
+                                                                color = SettingsTextPrimary,
+                                                                fontSize = 13.5.sp,
+                                                                fontWeight = FontWeight.Medium,
+                                                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -880,6 +1032,7 @@ private fun DialectPackRow(
     pack: DialectPack,
     enabled: Boolean,
     onToggle: (Boolean) -> Unit,
+    onInspectWords: () -> Unit,
     onDeleteCustom: (() -> Unit)?,
 ) {
     val icon = when {
@@ -892,7 +1045,7 @@ private fun DialectPackRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onToggle(!enabled) }
+            .clickable(onClick = onInspectWords)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -939,6 +1092,13 @@ private fun DialectPackRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            Text(
+                text = "View all ${pack.wordCount} words →",
+                color = SettingsAccentBlue,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
         if (onDeleteCustom != null) {
             IconButton(onClick = onDeleteCustom) {
