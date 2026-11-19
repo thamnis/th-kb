@@ -83,6 +83,8 @@ class ThKbInputMethodService :
     private var pendingReplacement: PendingReplacement? = null
     private var suppressedAutoReplacePrefix: String? = null
     private var swipeAlternativesTail: String? = null
+    private var pendingPostSwipeSpace = false
+    private var lastSpaceCommitMs = 0L
     private var voiceLanguageOverride by mutableStateOf<String?>(null)
     private var pendingVoiceStartAfterPermission = false
     private val undoStack = ArrayDeque<TextSnapshot>()
@@ -241,14 +243,26 @@ class ThKbInputMethodService :
                     onSelectSuggestion = { candidate ->
                         val ic = currentInputConnection ?: return@KeyboardRoot
                         captureUndoSnapshot(coalesceTyping = false)
-                        val before = ic.getTextBeforeCursor(96, 0)
+                        val before = ic.getTextBeforeCursor(96, 0)?.toString().orEmpty()
+                        val activeSwipeTail = swipeAlternativesTail
+                        val isReplacingSwipedWord = activeSwipeTail != null && before.endsWith(activeSwipeTail)
                         val (ctxWords, prefix) = suggestionEngine.extractContext(before)
-                        val replacementWithSpace = "${candidate.word} "
+                        val hasLeadingSpace = isReplacingSwipedWord && activeSwipeTail!!.startsWith(" ")
+                        val replacementWithSpace = if (hasLeadingSpace) {
+                            " ${candidate.word} "
+                        } else {
+                            "${candidate.word} "
+                        }
+                        val deleteCount = if (isReplacingSwipedWord) {
+                            activeSwipeTail!!.length
+                        } else {
+                            prefix.length
+                        }
                         ic.beginBatchEdit()
                         try {
                             ic.finishComposingText()
-                            if (prefix.isNotEmpty()) {
-                                ic.deleteSurroundingText(prefix.length, 0)
+                            if (deleteCount > 0) {
+                                ic.deleteSurroundingText(deleteCount, 0)
                             }
                             ic.commitText(replacementWithSpace, 1)
                         } finally {
@@ -261,9 +275,11 @@ class ThKbInputMethodService :
                             suggestionEngine.learnWord(prevWord, candidate.word, boost)
                         }
                         pendingReplacement = PendingReplacement(
-                            originalPrefix = prefix,
+                            originalPrefix = if (isReplacingSwipedWord) "" else prefix,
                             replacedText = replacementWithSpace,
                         )
+                        swipeAlternativesTail = null
+                        pendingPostSwipeSpace = false
                         suppressedAutoReplacePrefix = null
                         playFeedback(
                             haptics = settings.hapticsEnabled,
@@ -281,8 +297,49 @@ class ThKbInputMethodService :
                         refreshSuggestions(effectiveLayoutId, settings)
                     },
                     onCommitText = { text ->
+                        val now = SystemClock.uptimeMillis()
+                        val wasPostSwipeNoSpace = pendingPostSwipeSpace
+                        pendingPostSwipeSpace = false
+                        swipeAlternativesTail = null
+
+                        // Double-space to period (". ") shortcut
+                        if (text == " " && !wasPostSwipeNoSpace && (now - lastSpaceCommitMs) in 40L..340L &&
+                            inputContext != InputContext.PASSWORD &&
+                            inputContext != InputContext.TERMINAL &&
+                            inputContext != InputContext.NUMBER
+                        ) {
+                            val ic = currentInputConnection
+                            val beforeTwo = ic?.getTextBeforeCursor(2, 0)?.toString().orEmpty()
+                            if (beforeTwo.length == 2 && beforeTwo[1] == ' ' && beforeTwo[0].isLetterOrDigit()) {
+                                lastSpaceCommitMs = 0L
+                                captureUndoSnapshot(coalesceTyping = false)
+                                ic?.beginBatchEdit()
+                                try {
+                                    ic?.finishComposingText()
+                                    ic?.deleteSurroundingText(1, 0)
+                                    ic?.commitText(". ", 1)
+                                } finally {
+                                    ic?.endBatchEdit()
+                                }
+                                pendingReplacement = null
+                                suppressedAutoReplacePrefix = null
+                                refreshSuggestions(effectiveLayoutId, settings)
+                                return@KeyboardRoot
+                            }
+                        }
+
+                        if (text == " ") {
+                            lastSpaceCommitMs = now
+                        } else {
+                            lastSpaceCommitMs = 0L
+                        }
+
                         if (text in AUTO_REPLACE_TRIGGERS) {
-                            val autoReplaced = tryAutoReplaceBeforeTrigger(text, effectiveLayoutId, settings)
+                            val autoReplaced = if (wasPostSwipeNoSpace) {
+                                false
+                            } else {
+                                tryAutoReplaceBeforeTrigger(text, effectiveLayoutId, settings)
+                            }
                             if (!autoReplaced) {
                                 val before = currentInputConnection?.getTextBeforeCursor(96, 0)
                                 val (ctxWords, typedPrefix) = suggestionEngine.extractContext(before)
@@ -302,7 +359,12 @@ class ThKbInputMethodService :
                         } else {
                             pendingReplacement = null
                             suppressedAutoReplacePrefix = null
-                            commitTextSafe(text)
+                            val payload = if (wasPostSwipeNoSpace && text.length == 1 && text[0].isLetterOrDigit()) {
+                                " $text"
+                            } else {
+                                text
+                            }
+                            commitTextSafe(payload)
                         }
                         refreshSuggestions(effectiveLayoutId, settings)
                     },
@@ -365,6 +427,12 @@ class ThKbInputMethodService :
                     glideCharByChar = settings.glideCharByChar,
                     onToggleGlideMode = {
                         preferences.setGlideCharByChar(!settings.glideCharByChar)
+                    },
+                    onToggleLayout = {
+                        val nextLayout = if (effectiveLayoutId == "azerty_fr") "qwerty_en" else "azerty_fr"
+                        subtypeLayoutOverride = null
+                        preferences.setLayoutId(nextLayout)
+                        refreshSuggestions(nextLayout, settings.copy(layoutId = nextLayout))
                     },
                     onSwipeWord = { keyCenters, trailPoints, appendTrailingSpace ->
                         handleSwipeWord(
@@ -538,6 +606,7 @@ class ThKbInputMethodService :
             replacedText = committed,
         )
         swipeAlternativesTail = committed
+        pendingPostSwipeSpace = !appendTrailingSpace
         suppressedAutoReplacePrefix = null
         suggestions = if (candidates.size >= 3) {
             listOf(candidates[1], candidates[0], candidates[2])

@@ -535,7 +535,7 @@ class SettingsActivity : ComponentActivity() {
                                 }
 
                                 SettingsPage.TRY_KEYBOARD -> {
-                                    SettingsGroup(title = "Test Area") {
+                                    SettingsGroup(title = "Interactive Sandbox") {
                                         Column(
                                             modifier = Modifier.padding(16.dp),
                                             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -543,14 +543,46 @@ class SettingsActivity : ComponentActivity() {
                                             OutlinedTextField(
                                                 value = testText,
                                                 onValueChange = { testText = it },
-                                                label = { Text("Tap here and type to try your keyboard") },
+                                                label = { Text("Tap here to test typing, gliding & voice") },
                                                 modifier = Modifier.fillMaxWidth(),
                                                 minLines = 3,
                                             )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Text(
+                                                    text = "Active: ${if (settings.layoutId == "azerty_fr") "French AZERTY" else "English QWERTY"}",
+                                                    fontSize = 12.5.sp,
+                                                    color = SettingsTextSecondary,
+                                                )
+                                                if (testText.isNotEmpty()) {
+                                                    OutlinedButton(
+                                                        onClick = { testText = "" },
+                                                        shape = RoundedCornerShape(10.dp),
+                                                    ) {
+                                                        Text("Clear Box", fontSize = 12.sp)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    SettingsGroup(title = "Quick Gestures Guide") {
+                                        Column(
+                                            modifier = Modifier.padding(16.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
                                             Text(
-                                                text = "Tip: Glide up on ?123 to open the number pad · Swipe along the spacebar to move the cursor · Press Delete right after an auto-correction to undo it.",
+                                                text = "• Sentence Glide: Slide across letters, touch Spacebar, and keep sliding the next word.\n" +
+                                                    "• Char-by-Char Glide: Toggle 'Glide: Char' in the toolbar (or pause on a key) to glide letter-by-letter.\n" +
+                                                    "• Hold Spacebar: Switch between French AZERTY & English QWERTY.\n" +
+                                                    "• Slide Spacebar: Move the cursor left or right with spring animation.\n" +
+                                                    "• Glide Up on ?123 / ABC: Switch between Numpad (123) and Symbols (?#).",
                                                 fontSize = 13.sp,
                                                 color = SettingsTextSecondary,
+                                                lineHeight = 19.sp,
                                             )
                                         }
                                     }
@@ -575,6 +607,18 @@ class SettingsActivity : ComponentActivity() {
                                 }
 
                                 SettingsPage.DIALECT_STORE -> {
+                                    var selectedCategory by remember { mutableStateOf("All") }
+                                    val categories = remember(dialectState.availablePacks) {
+                                        listOf("All") + dialectState.availablePacks.map { it.category }.distinct()
+                                    }
+                                    val filteredPacks = remember(dialectState.availablePacks, selectedCategory) {
+                                        if (selectedCategory == "All") {
+                                            dialectState.availablePacks
+                                        } else {
+                                            dialectState.availablePacks.filter { it.category == selectedCategory }
+                                        }
+                                    }
+
                                     Surface(
                                         color = SettingsPillSoftBlue,
                                         shape = RoundedCornerShape(16.dp),
@@ -588,8 +632,22 @@ class SettingsActivity : ComponentActivity() {
                                         )
                                     }
 
-                                    SettingsGroup(title = "Available Jargon & Dialect Packs") {
-                                        dialectState.availablePacks.forEachIndexed { idx, pack ->
+                                    FlowRow(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        categories.forEach { cat ->
+                                            InputChip(
+                                                selected = selectedCategory == cat,
+                                                onClick = { selectedCategory = cat },
+                                                label = { Text(cat, fontSize = 12.5.sp) },
+                                            )
+                                        }
+                                    }
+
+                                    SettingsGroup(title = "Available Jargon & Dialect Packs (${filteredPacks.size})") {
+                                        filteredPacks.forEachIndexed { idx, pack ->
                                             if (idx > 0) SettingsRowDivider()
                                             val isEnabled = pack.id in dialectState.enabledPackIds
                                             DialectPackRow(

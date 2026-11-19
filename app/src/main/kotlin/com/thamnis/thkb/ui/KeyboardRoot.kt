@@ -254,6 +254,7 @@ fun KeyboardRoot(
     glideTypingEnabled: Boolean = true,
     glideCharByChar: Boolean = false,
     onToggleGlideMode: () -> Unit = {},
+    onToggleLayout: () -> Unit = {},
     onSwipeWord: (List<KeyCenterPoint>, List<SwipeTrailPoint>, Boolean) -> Unit = { _, _, _ -> },
     voiceUiState: VoiceUiState = VoiceUiState(),
     onStartVoiceTyping: () -> Unit = {},
@@ -633,6 +634,7 @@ fun KeyboardRoot(
                                 },
                                 onMoveCursor = onMoveCursor,
                                 onMoveCursorVertical = onMoveCursorVertical,
+                                onToggleLayout = onToggleLayout,
                                 glideTypingEnabled = glideTypingEnabled,
                                 glideCharByChar = glideCharByChar,
                                 onSwipeWord = { keyCenters, trailPoints, appendTrailingSpace ->
@@ -2582,6 +2584,7 @@ private fun TouchKeyGrid(
     onToggleNumericMode: () -> Unit,
     onMoveCursor: (Int) -> Unit,
     onMoveCursorVertical: (Int) -> Unit,
+    onToggleLayout: () -> Unit,
     glideTypingEnabled: Boolean,
     glideCharByChar: Boolean,
     onSwipeWord: (List<KeyCenterPoint>, List<SwipeTrailPoint>, Boolean) -> Unit,
@@ -2644,6 +2647,7 @@ private fun TouchKeyGrid(
     val latestOnToggleNumericMode by rememberUpdatedState(onToggleNumericMode)
     val latestOnMoveCursor by rememberUpdatedState(onMoveCursor)
     val latestOnMoveCursorVertical by rememberUpdatedState(onMoveCursorVertical)
+    val latestOnToggleLayout by rememberUpdatedState(onToggleLayout)
 
     Box(
         modifier = Modifier
@@ -2696,7 +2700,19 @@ private fun TouchKeyGrid(
                                             }
                                         }
                                     }
-                                    "SHIFT", "SPACE", "SYMBOLS", "MORE_SYMBOLS", "ALPHA", "EMOJI_KEY", "RETURN" -> {
+                                    "SPACE" -> {
+                                        // Hold Spacebar without gliding -> toggle French AZERTY <-> English QWERTY
+                                        pointer.longPressJob = scope.launch {
+                                            delay(latestLongPressDelayMs + 70L)
+                                            if (!pointer.isGliding) {
+                                                pointer.deleteGestureTriggered = true
+                                                glidedKeyTimestamps["SPACE"] = android.os.SystemClock.uptimeMillis()
+                                                latestOnKeyFeedback()
+                                                latestOnToggleLayout()
+                                            }
+                                        }
+                                    }
+                                    "SHIFT", "SYMBOLS", "MORE_SYMBOLS", "ALPHA", "EMOJI_KEY", "RETURN" -> {
                                         // No long-press character popup for control keys
                                     }
                                     else -> {
@@ -2777,6 +2793,7 @@ private fun TouchKeyGrid(
                                 if (pointer.keyId == "SPACE") {
                                     if (!pointer.isGliding && (abs(totalDx) > glideThresholdPx || abs(totalDy) > glideThresholdPx)) {
                                         pointer.isGliding = true
+                                        pointer.longPressJob?.cancel()
                                         pointer.lastGlideX = localPos.x
                                         pointer.lastGlideY = localPos.y
                                         activeGlidedKey = "SPACE"
@@ -3110,9 +3127,15 @@ private fun TouchKeyGrid(
                         val isKeyGlided = activeGlidedKey == keyId ||
                             (lastGlidedAt != null && (trailClockMs - lastGlidedAt) in 0..220)
 
+                        val keyLabel = if (keyId == "SPACE") {
+                            if (layoutId.contains("fr") || layoutId.contains("ci")) "Français • AZERTY" else "English • QWERTY"
+                        } else {
+                            KeyboardStateLogic.resolveKeyLabel(keyId, shiftState, returnAction)
+                        }
+
                         KeyCap(
                             keyId = keyId,
-                            label = KeyboardStateLogic.resolveKeyLabel(keyId, shiftState, returnAction),
+                            label = keyLabel,
                             shiftState = shiftState,
                             isForwardDeleteKey = isForwardDeleteKey,
                             isPressed = isPressed,
@@ -3169,6 +3192,29 @@ private fun TouchKeyGrid(
                         end = o1,
                         strokeWidth = (1.2.dp.toPx() + 2.8.dp.toPx() * intensity),
                         cap = StrokeCap.Round,
+                    )
+                }
+            }
+            val currentGlided = activeGlidedKey
+            if (currentGlided != null && (glideCharByChar || currentGlided == "SPACE")) {
+                Surface(
+                    color = ActionKeyBgColor.copy(alpha = 0.92f),
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 2.dp),
+                ) {
+                    Text(
+                        text = when {
+                            glideCharByChar && currentGlided == "SPACE" -> "Char Glide: ␣ (Space)"
+                            glideCharByChar && currentGlided == "BACKSPACE" -> "Char Glide: ⌫"
+                            glideCharByChar -> "Char Glide: ${currentGlided.uppercase()}"
+                            else -> "Sentence Glide • Space = Next Word"
+                        },
+                        color = ReturnBgColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp),
                     )
                 }
             }
