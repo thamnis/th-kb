@@ -602,7 +602,8 @@ class SettingsActivity : ComponentActivity() {
                                                     "• Hold Spacebar (1s): Switch between French AZERTY & English QWERTY.\n" +
                                                     "• Slide Spacebar: Move the cursor left/right or up/down with the 2D dot indicator.\n" +
                                                     "• Hold Emoji (☺): Reveal hidden tools (Clipboard, To-Do List, Settings).\n" +
-                                                    "• Glide Undo / Redo Pill: Slide left/right on the toolbar Undo/Redo pill to step history.\n" +
+                                                    "• Glide Toolbar (← / →): Swipe left or right anywhere on the top toolbar to Undo or Redo.\n" +
+                                                    "• Shift on Selection: Select text and tap Shift (⇧) to cycle its case.\n" +
                                                     "• Glide Up on ?123 / ABC: Switch between Numpad (123) and Symbols (?#).",
                                                 fontSize = 13.sp,
                                                 color = SettingsTextSecondary,

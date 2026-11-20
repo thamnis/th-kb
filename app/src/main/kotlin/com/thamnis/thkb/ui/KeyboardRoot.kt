@@ -234,8 +234,7 @@ fun KeyboardRoot(
     onKeyFeedback: () -> Unit,
     onLightHaptic: () -> Unit = {},
     onGestureHaptic: () -> Unit = {},
-    showGestureTip: Boolean = false,
-    onDismissGestureTip: () -> Unit = {},
+    onToggleSelectionCase: () -> Boolean = { false },
     onCommitText: (String) -> Unit,
     onBackspace: () -> Unit,
     onForwardDelete: () -> Unit = {},
@@ -420,40 +419,6 @@ fun KeyboardRoot(
                                         },
                                     )
                                 } else {
-                                    if (showGestureTip && panelMode == PanelMode.KEYBOARD) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 8.dp, vertical = 2.dp)
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(ActionKeyBgColor)
-                                                .border(1.dp, ReturnBgColor.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-                                                .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Text(
-                                                text = "Tip: Hold ☺ for tools • Glide ↑ ⇧ for char glide • Glide Undo/Redo",
-                                                color = ToolbarTextColor,
-                                                fontSize = 11.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                            Spacer(Modifier.width(6.dp))
-                                            Icon(
-                                                imageVector = Icons.Outlined.Close,
-                                                contentDescription = "Dismiss tip",
-                                                tint = HintTextColor,
-                                                modifier = Modifier
-                                                    .size(16.dp)
-                                                    .clip(CircleShape)
-                                                    .clickable {
-                                                        onLightHaptic()
-                                                        onDismissGestureTip()
-                                                    },
-                                            )
-                                        }
-                                    }
                                     ToolbarRow(
                                         panelMode = panelMode,
                                         canResize = canResizePanel,
@@ -634,6 +599,9 @@ fun KeyboardRoot(
                                     }
                                     when (keyId) {
                                         "SHIFT" -> {
+                                            if (onToggleSelectionCase()) {
+                                                return@TouchKeyGrid
+                                            }
                                             val now = android.os.SystemClock.uptimeMillis()
                                             val isDoubleTap = shiftState == ShiftState.ONCE && (now - lastShiftTapMs) <= 320L
                                             shiftState = KeyboardStateLogic.nextShiftOnTap(shiftState, isDoubleTap)
@@ -800,10 +768,10 @@ fun KeyboardRoot(
                 ),
             ) + fadeIn(animationSpec = tween(50)),
             exit = scaleOut(
-                targetScale = 0.75f,
+                targetScale = 0.8f,
                 transformOrigin = TransformOrigin(0.5f, 1f),
-                animationSpec = tween(60),
-            ) + fadeOut(animationSpec = tween(60)),
+                animationSpec = tween(25),
+            ) + fadeOut(animationSpec = tween(25)),
         ) {
             val preview = activePreview ?: return@AnimatedVisibility
             val bubbleW = with(density) { 48.dp.toPx() }
@@ -1220,10 +1188,37 @@ private fun ToolbarRow(
         label = "resizeArrowRotation",
     )
 
+    var undoRedoDragAccumPx by remember { mutableStateOf(0f) }
+    val undoRedoStepPx = with(density) { 24.dp.toPx() }
+    val latestOnUndo by rememberUpdatedState(onUndo)
+    val latestOnRedo by rememberUpdatedState(onRedo)
+    val latestOnLightHaptic by rememberUpdatedState(onLightHaptic)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(44.dp)
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { undoRedoDragAccumPx = 0f },
+                    onDragEnd = { undoRedoDragAccumPx = 0f },
+                    onDragCancel = { undoRedoDragAccumPx = 0f },
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        undoRedoDragAccumPx += dragAmount
+                        while (undoRedoDragAccumPx <= -undoRedoStepPx) {
+                            undoRedoDragAccumPx += undoRedoStepPx
+                            latestOnLightHaptic()
+                            latestOnUndo()
+                        }
+                        while (undoRedoDragAccumPx >= undoRedoStepPx) {
+                            undoRedoDragAccumPx -= undoRedoStepPx
+                            latestOnLightHaptic()
+                            latestOnRedo()
+                        }
+                    },
+                )
+            }
             .then(
                 if (canResize) {
                     Modifier.pointerInput(Unit) {
@@ -1363,121 +1358,6 @@ private fun ToolbarRow(
                     active = voiceActive,
                     onClick = onToggleVoice,
                 )
-
-                // Dedicated Undo / Redo Toolbar Pill (tap buttons or glide horizontally to step history)
-                var undoPressed by remember { mutableStateOf(false) }
-                var redoPressed by remember { mutableStateOf(false) }
-                var undoRedoDragAccumPx by remember { mutableStateOf(0f) }
-                val undoRedoStepPx = with(density) { 18.dp.toPx() }
-                val latestOnUndo by rememberUpdatedState(onUndo)
-                val latestOnRedo by rememberUpdatedState(onRedo)
-                val latestOnLightHaptic by rememberUpdatedState(onLightHaptic)
-
-                Row(
-                    modifier = Modifier
-                        .height(32.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(ActionKeyBgColor)
-                        .pointerInput(Unit) {
-                            detectHorizontalDragGestures(
-                                onDragStart = { undoRedoDragAccumPx = 0f },
-                                onDragEnd = { undoRedoDragAccumPx = 0f },
-                                onDragCancel = { undoRedoDragAccumPx = 0f },
-                                onHorizontalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    undoRedoDragAccumPx += dragAmount
-                                    while (undoRedoDragAccumPx <= -undoRedoStepPx) {
-                                        undoRedoDragAccumPx += undoRedoStepPx
-                                        undoPressed = true
-                                        latestOnLightHaptic()
-                                        latestOnUndo()
-                                    }
-                                    while (undoRedoDragAccumPx >= undoRedoStepPx) {
-                                        undoRedoDragAccumPx -= undoRedoStepPx
-                                        redoPressed = true
-                                        latestOnLightHaptic()
-                                        latestOnRedo()
-                                    }
-                                },
-                            )
-                        }
-                        .padding(horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                val undoScale by animateFloatAsState(
-                    targetValue = if (undoPressed) 0.85f else 1.0f,
-                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-                    label = "undoScale",
-                )
-                if (undoPressed) {
-                    LaunchedEffect(Unit) {
-                        delay(120L)
-                        undoPressed = false
-                    }
-                }
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .graphicsLayer {
-                            scaleX = undoScale
-                            scaleY = undoScale
-                        }
-                        .clip(CircleShape)
-                        .clickable {
-                            undoPressed = true
-                            onUndo()
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.Undo,
-                        contentDescription = "Undo",
-                        tint = ToolbarTextColor,
-                        modifier = Modifier.size(17.dp),
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .width(1.dp)
-                        .height(14.dp)
-                        .background(HintTextColor.copy(alpha = 0.35f), RoundedCornerShape(0.5.dp)),
-                )
-
-                val redoScale by animateFloatAsState(
-                    targetValue = if (redoPressed) 0.85f else 1.0f,
-                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-                    label = "redoScale",
-                )
-                if (redoPressed) {
-                    LaunchedEffect(Unit) {
-                        delay(120L)
-                        redoPressed = false
-                    }
-                }
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .graphicsLayer {
-                            scaleX = redoScale
-                            scaleY = redoScale
-                        }
-                        .clip(CircleShape)
-                        .clickable {
-                            redoPressed = true
-                            onRedo()
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.Redo,
-                        contentDescription = "Redo",
-                        tint = ToolbarTextColor,
-                        modifier = Modifier.size(17.dp),
-                    )
-                }
-            }
             }
         }
     }
@@ -1646,8 +1526,9 @@ private fun TouchKeyGrid(
             .onGloballyPositioned { gridCoords = it }
             .pointerInput(rows, layoutId, isAlphaLayer) {
                 awaitEachGesture {
-                    while (true) {
-                        val event = awaitPointerEvent()
+                    try {
+                        while (true) {
+                            val event = awaitPointerEvent()
 
                         for (change in event.changes) {
                             val localPos = change.position
@@ -2121,8 +2002,17 @@ private fun TouchKeyGrid(
                         }
 
                         if (event.changes.none { it.pressed }) {
+                            pressedKeys.clear()
+                            latestOnShowKeyPreview(null)
+                            activeGlidedKey = null
                             break
                         }
+                    }
+                    } finally {
+                        activePointers.clear()
+                        pressedKeys.clear()
+                        latestOnShowKeyPreview(null)
+                        activeGlidedKey = null
                     }
                 }
             },

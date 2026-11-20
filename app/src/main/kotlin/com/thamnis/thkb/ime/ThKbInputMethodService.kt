@@ -262,10 +262,7 @@ class ThKbInputMethodService :
                             style = HapticStyle.GESTURE,
                         )
                     },
-                    showGestureTip = !settings.dismissedGestureTip,
-                    onDismissGestureTip = {
-                        preferences.setDismissedGestureTip(true)
-                    },
+                    onToggleSelectionCase = { toggleSelectionCase() },
                     suggestions = suggestions,
                     onSelectSuggestion = { candidate ->
                         val ic = currentInputConnection ?: return@KeyboardRoot
@@ -1257,6 +1254,35 @@ class ThKbInputMethodService :
         val ic = currentInputConnection ?: return false
         val before = ic.getTextBeforeCursor(16, 0)?.toString().orEmpty()
         return KeyboardStateLogic.shouldAutoCapBeforeCursor(before, inputContext, autoCapPref)
+    }
+
+    private fun toggleSelectionCase(): Boolean {
+        val ic = currentInputConnection ?: return false
+        val selected = ic.getSelectedText(0)?.toString().orEmpty()
+        if (selected.isEmpty() || selected.none { it.isLetter() }) return false
+
+        val transformed = KeyboardStateLogic.cycleSelectionCase(selected)
+        if (transformed == selected) return false
+
+        captureUndoSnapshot(coalesceTyping = false)
+        val extracted = ic.getExtractedText(ExtractedTextRequest(), 0)
+        val selStart = if (extracted != null && extracted.selectionStart >= 0 && extracted.selectionEnd >= 0) {
+            minOf(extracted.selectionStart, extracted.selectionEnd)
+        } else {
+            -1
+        }
+        ic.beginBatchEdit()
+        try {
+            ic.finishComposingText()
+            ic.commitText(transformed, 1)
+            if (selStart >= 0) {
+                ic.setSelection(selStart, selStart + transformed.length)
+            }
+        } finally {
+            ic.endBatchEdit()
+        }
+        pendingReplacement = null
+        return true
     }
 
     private enum class HapticStyle {

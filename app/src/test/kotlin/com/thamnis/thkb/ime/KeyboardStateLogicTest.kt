@@ -46,6 +46,16 @@ class KeyboardStateLogicTest {
     }
 
     @Test
+    fun cycleSelectionCaseCyclesLowerTitleUpper() {
+        assertEquals("Hello World", KeyboardStateLogic.cycleSelectionCase("hello world"))
+        assertEquals("HELLO WORLD", KeyboardStateLogic.cycleSelectionCase("Hello World"))
+        assertEquals("hello world", KeyboardStateLogic.cycleSelectionCase("HELLO WORLD"))
+        assertEquals("A", KeyboardStateLogic.cycleSelectionCase("a"))
+        assertEquals("a", KeyboardStateLogic.cycleSelectionCase("A"))
+        assertEquals("mixed", KeyboardStateLogic.cycleSelectionCase("mIxEd"))
+    }
+
+    @Test
     fun resolveReturnActionMapsImeOptions() {
         assertEquals(ReturnAction.SEARCH, KeyboardStateLogic.resolveReturnAction(EditorInfo.IME_ACTION_SEARCH))
         assertEquals(ReturnAction.SEND, KeyboardStateLogic.resolveReturnAction(EditorInfo.IME_ACTION_SEND))

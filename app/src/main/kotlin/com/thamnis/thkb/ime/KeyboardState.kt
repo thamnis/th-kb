@@ -229,4 +229,29 @@ object KeyboardStateLogic {
         val nextNewline = after.indexOf('\n', startIndex = start)
         return if (nextNewline < 0) after.length else (nextNewline + 1)
     }
+
+    /** Cycles selected text through lower -> Title Case -> UPPERCASE -> lower. */
+    fun cycleSelectionCase(text: String): String {
+        if (text.none { it.isLetter() }) return text
+        val lower = text.lowercase()
+        val upper = text.uppercase()
+        val title = buildString(text.length) {
+            var capNext = true
+            for (ch in lower) {
+                if (ch.isLetter()) {
+                    append(if (capNext) ch.titlecaseChar() else ch)
+                    capNext = false
+                } else {
+                    append(ch)
+                    capNext = ch.isWhitespace() || ch == '-' || ch == '\'' || ch == '/' || ch == '('
+                }
+            }
+        }
+        return when {
+            text == upper -> lower
+            text == lower -> if (title != upper) title else upper
+            text == title -> upper
+            else -> lower
+        }
+    }
 }
