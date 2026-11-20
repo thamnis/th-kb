@@ -1509,6 +1509,8 @@ private fun TouchKeyGrid(
     var backspaceDotActive by remember(rows) { mutableStateOf(false) }
     var backspaceDotX by remember(rows) { mutableStateOf(0f) }
     var backspaceDotY by remember(rows) { mutableStateOf(0f) }
+    var backspaceBubbleMode by remember(rows) { mutableStateOf<String?>(null) }
+    var backspaceBubbleOffsetX by remember(rows) { mutableStateOf(0f) }
     var backspacePulseSeq by remember(rows) { mutableStateOf(0) }
     var specialActionHudText by remember(rows) { mutableStateOf<String?>(null) }
     var specialActionSeq by remember(rows) { mutableStateOf(0) }
@@ -1525,11 +1527,13 @@ private fun TouchKeyGrid(
 
     LaunchedEffect(backspacePulseSeq) {
         if (backspacePulseSeq > 0) {
-            delay(280L)
+            delay(520L)
             if (activePointers.values.none { it.keyId == "BACKSPACE" }) {
                 backspaceDotActive = false
                 backspaceDotX = 0f
                 backspaceDotY = 0f
+                backspaceBubbleMode = null
+                backspaceBubbleOffsetX = 0f
             }
         }
     }
@@ -1825,19 +1829,22 @@ private fun TouchKeyGrid(
                                                 latestOnKeyFeedback()
                                                 latestOnToggleForwardDelete()
                                             }
-                                            // Glide up -> delete one paragraph at once (Circular dot shifts to top!)
-                                            totalDy < -deleteSwipeThresholdPx && abs(totalDy) > abs(totalDx) -> {
+                                            // Glide up or horizontal right -> Line suppression mode
+                                            (totalDy < -deleteSwipeThresholdPx && abs(totalDy) > abs(totalDx)) ||
+                                                (totalDx > deleteSwipeThresholdPx && abs(totalDx) >= abs(totalDy)) -> {
                                                 pointer.deleteGestureTriggered = true
                                                 pointer.isGliding = true
                                                 pointer.repeatJob?.cancel()
                                                 backspaceDotActive = true
-                                                backspaceDotX = 0f
-                                                backspaceDotY = -15f
+                                                backspaceDotX = if (totalDx > deleteSwipeThresholdPx) 16f else 0f
+                                                backspaceDotY = if (totalDy < -deleteSwipeThresholdPx) -15f else 0f
+                                                backspaceBubbleMode = "LINE"
+                                                backspaceBubbleOffsetX = 0f
                                                 backspacePulseSeq++
                                                 latestOnKeyFeedback()
                                                 latestOnDeleteParagraph()
                                             }
-                                            // Glide left -> word delete mode (Circular dot shifts to left!)
+                                            // Glide left -> Word suppression mode
                                             totalDx < -deleteSwipeThresholdPx && abs(totalDx) >= abs(totalDy) -> {
                                                 pointer.deleteGestureTriggered = true
                                                 pointer.isGliding = true
@@ -1846,6 +1853,8 @@ private fun TouchKeyGrid(
                                                 backspaceDotActive = true
                                                 backspaceDotX = -20f
                                                 backspaceDotY = 0f
+                                                backspaceBubbleMode = "WORD"
+                                                backspaceBubbleOffsetX = totalDx.coerceIn(-36f, 0f)
                                                 backspacePulseSeq++
                                                 latestOnKeyFeedback()
                                                 latestOnDeleteWord()
@@ -1855,6 +1864,7 @@ private fun TouchKeyGrid(
                                                         backspaceDotActive = true
                                                         backspaceDotX = -20f
                                                         backspaceDotY = 0f
+                                                        backspaceBubbleMode = "WORD"
                                                         backspacePulseSeq++
                                                         latestOnDeleteWord()
                                                         delay(140L)
@@ -1863,11 +1873,13 @@ private fun TouchKeyGrid(
                                             }
                                         }
                                     } else if (pointer.isGliding && totalDx < -deleteSwipeThresholdPx) {
+                                        backspaceBubbleOffsetX = totalDx.coerceIn(-44f, 0f)
                                         val stepDx = pointer.lastGlideX - localPos.x
                                         if (stepDx >= wordSwipeStepPx) {
                                             backspaceDotActive = true
                                             backspaceDotX = -20f
                                             backspaceDotY = 0f
+                                            backspaceBubbleMode = "WORD"
                                             backspacePulseSeq++
                                             latestOnDeleteWord()
                                             pointer.lastGlideX = localPos.x
@@ -2242,6 +2254,73 @@ private fun TouchKeyGrid(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp),
+                    )
+                }
+            }
+        }
+
+        var lastBackspaceBubbleMode by remember(rows) { mutableStateOf("WORD") }
+        if (backspaceBubbleMode != null) {
+            lastBackspaceBubbleMode = backspaceBubbleMode!!
+        }
+        val animatedBubbleShiftX by animateFloatAsState(
+            targetValue = backspaceBubbleOffsetX,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMedium,
+            ),
+            label = "backspaceBubbleShiftX",
+        )
+        AnimatedVisibility(
+            visible = backspaceBubbleMode != null,
+            enter = scaleIn(
+                initialScale = 0.72f,
+                transformOrigin = TransformOrigin(0.8f, 1f),
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessHigh,
+                ),
+            ) + fadeIn(tween(70)),
+            exit = scaleOut(
+                targetScale = 0.8f,
+                transformOrigin = TransformOrigin(0.8f, 1f),
+                animationSpec = tween(90),
+            ) + fadeOut(tween(90)),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 64.dp, end = 8.dp)
+                .graphicsLayer {
+                    translationX = animatedBubbleShiftX
+                },
+        ) {
+            val isLineMode = lastBackspaceBubbleMode == "LINE"
+            Surface(
+                color = Color(0xFF2C2E33),
+                shape = RoundedCornerShape(50),
+                shadowElevation = 6.dp,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .background(ReturnBgColor.copy(alpha = 0.25f), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(ReturnBgColor, CircleShape),
+                        )
+                    }
+                    Text(
+                        text = if (isLineMode) "Line Mode" else "Word Mode",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 }
             }
