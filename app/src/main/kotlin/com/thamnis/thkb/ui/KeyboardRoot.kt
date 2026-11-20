@@ -1506,10 +1506,6 @@ private fun TouchKeyGrid(
     var activeGlidedKey by remember(rows) { mutableStateOf<String?>(null) }
     var spaceGlideOffsetPx by remember(rows) { mutableStateOf(0f) }
     var spaceGlideOffsetY by remember(rows) { mutableStateOf(0f) }
-    var backspaceDotActive by remember(rows) { mutableStateOf(false) }
-    var backspaceDotX by remember(rows) { mutableStateOf(0f) }
-    var backspaceDotY by remember(rows) { mutableStateOf(0f) }
-    var backspacePulseSeq by remember(rows) { mutableStateOf(0) }
     var specialActionHudText by remember(rows) { mutableStateOf<String?>(null) }
     var specialActionSeq by remember(rows) { mutableStateOf(0) }
     var trailClockMs by remember { mutableStateOf(0L) }
@@ -1520,17 +1516,6 @@ private fun TouchKeyGrid(
         if (specialActionSeq > 0) {
             delay(560L)
             specialActionHudText = null
-        }
-    }
-
-    LaunchedEffect(backspacePulseSeq) {
-        if (backspacePulseSeq > 0) {
-            delay(280L)
-            if (activePointers.values.none { it.keyId == "BACKSPACE" }) {
-                backspaceDotActive = false
-                backspaceDotX = 0f
-                backspaceDotY = 0f
-            }
         }
     }
 
@@ -1807,9 +1792,6 @@ private fun TouchKeyGrid(
                                     if (abs(totalDx) > glideThresholdPx || abs(totalDy) > glideThresholdPx) {
                                         activeGlidedKey = "BACKSPACE"
                                         glidedKeyTimestamps["BACKSPACE"] = android.os.SystemClock.uptimeMillis()
-                                        backspaceDotActive = true
-                                        backspaceDotX = totalDx.coerceIn(-22f, 22f)
-                                        backspaceDotY = totalDy.coerceIn(-16f, 16f)
                                     }
                                     if (!pointer.deleteGestureTriggered) {
                                         when {
@@ -1818,44 +1800,28 @@ private fun TouchKeyGrid(
                                                 pointer.deleteGestureTriggered = true
                                                 pointer.isGliding = true
                                                 pointer.repeatJob?.cancel()
-                                                backspaceDotActive = true
-                                                backspaceDotX = 0f
-                                                backspaceDotY = 14f
-                                                backspacePulseSeq++
                                                 latestOnKeyFeedback()
                                                 latestOnToggleForwardDelete()
                                             }
-                                            // Glide up -> delete one paragraph at once (Circular dot shifts to top!)
+                                            // Glide up -> delete one paragraph at once
                                             totalDy < -deleteSwipeThresholdPx && abs(totalDy) > abs(totalDx) -> {
                                                 pointer.deleteGestureTriggered = true
                                                 pointer.isGliding = true
                                                 pointer.repeatJob?.cancel()
-                                                backspaceDotActive = true
-                                                backspaceDotX = 0f
-                                                backspaceDotY = -15f
-                                                backspacePulseSeq++
                                                 latestOnKeyFeedback()
                                                 latestOnDeleteParagraph()
                                             }
-                                            // Glide left -> word delete mode (Circular dot shifts to left!)
+                                            // Glide left -> word delete mode
                                             totalDx < -deleteSwipeThresholdPx && abs(totalDx) >= abs(totalDy) -> {
                                                 pointer.deleteGestureTriggered = true
                                                 pointer.isGliding = true
                                                 pointer.lastGlideX = localPos.x
                                                 pointer.repeatJob?.cancel()
-                                                backspaceDotActive = true
-                                                backspaceDotX = -20f
-                                                backspaceDotY = 0f
-                                                backspacePulseSeq++
                                                 latestOnKeyFeedback()
                                                 latestOnDeleteWord()
                                                 pointer.repeatJob = scope.launch {
                                                     delay(280L)
                                                     while (true) {
-                                                        backspaceDotActive = true
-                                                        backspaceDotX = -20f
-                                                        backspaceDotY = 0f
-                                                        backspacePulseSeq++
                                                         latestOnDeleteWord()
                                                         delay(140L)
                                                     }
@@ -1865,10 +1831,6 @@ private fun TouchKeyGrid(
                                     } else if (pointer.isGliding && totalDx < -deleteSwipeThresholdPx) {
                                         val stepDx = pointer.lastGlideX - localPos.x
                                         if (stepDx >= wordSwipeStepPx) {
-                                            backspaceDotActive = true
-                                            backspaceDotX = -20f
-                                            backspaceDotY = 0f
-                                            backspacePulseSeq++
                                             latestOnDeleteWord()
                                             pointer.lastGlideX = localPos.x
                                         }
@@ -2039,8 +2001,6 @@ private fun TouchKeyGrid(
                                 if (pointer.keyId == "SPACE") {
                                     spaceGlideOffsetPx = 0f
                                     spaceGlideOffsetY = 0f
-                                } else if (pointer.keyId == "BACKSPACE") {
-                                    backspacePulseSeq++
                                 }
 
                                 val toolsPopup = latestEmojiToolsPopup
@@ -2113,7 +2073,6 @@ private fun TouchKeyGrid(
                         val isShiftActive = keyId == "SHIFT" && shiftState != ShiftState.OFF
                         val isForwardDeleteKey = keyId == "BACKSPACE" && isForwardDeleteMode
                         val isSpaceGliding = keyId == "SPACE" && activePointers.values.any { it.keyId == "SPACE" && it.isGliding }
-                        val isBackspaceDotVisible = keyId == "BACKSPACE" && backspaceDotActive
 
                         val bg = when {
                             isReturn -> ReturnBgColor
@@ -2161,9 +2120,6 @@ private fun TouchKeyGrid(
                             label = keyLabel,
                             shiftState = shiftState,
                             isForwardDeleteKey = isForwardDeleteKey,
-                            isBackspaceDotVisible = isBackspaceDotVisible,
-                            backspaceDotX = if (keyId == "BACKSPACE") backspaceDotX else 0f,
-                            backspaceDotY = if (keyId == "BACKSPACE") backspaceDotY else 0f,
                             isPressed = isPressed,
                             isGlidedOver = isKeyGlided,
                             isSpaceGliding = isSpaceGliding,
@@ -2284,9 +2240,6 @@ private fun RowScope.KeyCap(
     label: String,
     shiftState: ShiftState,
     isForwardDeleteKey: Boolean,
-    isBackspaceDotVisible: Boolean = false,
-    backspaceDotX: Float = 0f,
-    backspaceDotY: Float = 0f,
     isPressed: Boolean,
     isGlidedOver: Boolean,
     isSpaceGliding: Boolean,
@@ -2308,7 +2261,6 @@ private fun RowScope.KeyCap(
     )
     val keyScale by animateFloatAsState(
         targetValue = when {
-            isBackspaceDotVisible -> 1.05f
             isPressed -> 0.93f
             isSpaceGliding -> 1.03f
             isGlidedOver -> 1.045f
@@ -2332,22 +2284,6 @@ private fun RowScope.KeyCap(
             stiffness = Spring.StiffnessMedium,
         ),
         label = "backspaceFlip",
-    )
-    val animatedBackspaceDotX by animateFloatAsState(
-        targetValue = if (isBackspaceDotVisible) backspaceDotX.coerceIn(-20f, 20f) else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "backspaceDotX",
-    )
-    val animatedBackspaceDotY by animateFloatAsState(
-        targetValue = if (isBackspaceDotVisible) backspaceDotY.coerceIn(-15f, 15f) else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "backspaceDotY",
     )
     val animatedSpaceShiftPx by animateFloatAsState(
         targetValue = if (isSpaceGliding) spaceGlideOffsetPx.coerceIn(-44f, 44f) else 0f,
@@ -2376,9 +2312,6 @@ private fun RowScope.KeyCap(
                 if (keyId == "SPACE" && isSpaceGliding) {
                     translationX = animatedSpaceShiftPx * 0.14f
                     translationY = animatedSpaceShiftY * 0.35f
-                } else if (keyId == "BACKSPACE" && isBackspaceDotVisible) {
-                    translationX = animatedBackspaceDotX * 0.18f
-                    translationY = animatedBackspaceDotY * 0.25f
                 }
             }
             .onGloballyPositioned(onBoundsChanged)
@@ -2418,44 +2351,17 @@ private fun RowScope.KeyCap(
                 )
             }
             keyId == "BACKSPACE" -> {
-                if (isBackspaceDotVisible) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight()
-                            .align(Alignment.Center),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .graphicsLayer {
-                                    translationX = animatedBackspaceDotX
-                                    translationY = animatedBackspaceDotY
-                                }
-                                .size(20.dp)
-                                .background(ReturnBgColor.copy(alpha = 0.25f), CircleShape),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .background(ReturnBgColor, CircleShape),
-                            )
-                        }
-                    }
-                } else {
-                    Icon(
-                        imageVector = icon ?: Icons.AutoMirrored.Outlined.Backspace,
-                        contentDescription = label,
-                        tint = foregroundColor,
-                        modifier = Modifier
-                            .size(22.dp)
-                            .align(Alignment.Center)
-                            .graphicsLayer {
-                                rotationY = backspaceFlip
-                            },
-                    )
-                }
+                Icon(
+                    imageVector = icon ?: Icons.AutoMirrored.Outlined.Backspace,
+                    contentDescription = label,
+                    tint = foregroundColor,
+                    modifier = Modifier
+                        .size(22.dp)
+                        .align(Alignment.Center)
+                        .graphicsLayer {
+                            rotationY = backspaceFlip
+                        },
+                )
             }
             keyId == "RETURN" -> {
                 AnimatedContent(
