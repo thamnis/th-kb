@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-beta.2] - 2026-11-20
+
+### Added
+- **Toolbar Undo / Redo Glide**: Slide horizontally across the toolbar Undo/Redo pill (`←` / `→`) to step continuously through Undo and Redo history snapshots with light haptic ticks.
+- **Char-Glided Symbols & Numbers**: Character-by-character glide typing (`260ms` dwell) now works across symbol (`?123`, `=\<`) and numeric (`123`) layers when Char-by-Char Glide Mode is active.
+- **First-Launch Dismissible Gesture Tip**: Added a compact, one-time dismissible tip bar above the keyboard (`Hold ☺ for tools • Glide ↑ ⇧ for char glide • Glide Undo/Redo`), persisted via `KbPreferences.setDismissedGestureTip`.
+- **Offline Voice Packs Shortcut**: Added an **Offline Voice Packs** navigation row in **Settings** (`Settings.ACTION_VOICE_INPUT_SETTINGS`) to manage system speech recognition & offline voice languages.
+- **Distinct Haptic Feedback Primitives**: Separated standard key taps (`KEYBOARD_TAP`), light cursor/glide ticks (`CLOCK_TICK`), and mode/gesture toggles (`LONG_PRESS`).
+
 ## [1.0.0-beta.1] - 2026-11-20
 
 ### Added

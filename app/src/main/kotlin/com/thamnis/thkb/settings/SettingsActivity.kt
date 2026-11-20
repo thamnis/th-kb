@@ -58,6 +58,7 @@ import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.LocalHospital
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.outlined.Tag
@@ -521,6 +522,21 @@ class SettingsActivity : ComponentActivity() {
                                             valueText = "${personalState.words.size} saved",
                                             onClick = { currentPage = SettingsPage.PERSONAL_DICT },
                                         )
+                                        SettingsRowDivider()
+                                        SettingsNavRow(
+                                            icon = Icons.Outlined.Mic,
+                                            title = "Offline Voice Packs",
+                                            subtitle = "Manage system speech recognition & offline voice languages",
+                                            onClick = {
+                                                val voiceIntent = Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
+                                                runCatching { startActivity(voiceIntent) }
+                                                    .onFailure {
+                                                        runCatching {
+                                                            startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
+                                                        }
+                                                    }
+                                            },
+                                        )
                                     }
 
                                     SettingsGroup(title = "Backup & About") {
@@ -586,6 +602,7 @@ class SettingsActivity : ComponentActivity() {
                                                     "• Hold Spacebar (1s): Switch between French AZERTY & English QWERTY.\n" +
                                                     "• Slide Spacebar: Move the cursor left/right or up/down with the 2D dot indicator.\n" +
                                                     "• Hold Emoji (☺): Reveal hidden tools (Clipboard, To-Do List, Settings).\n" +
+                                                    "• Glide Undo / Redo Pill: Slide left/right on the toolbar Undo/Redo pill to step history.\n" +
                                                     "• Glide Up on ?123 / ABC: Switch between Numpad (123) and Symbols (?#).",
                                                 fontSize = 13.sp,
                                                 color = SettingsTextSecondary,

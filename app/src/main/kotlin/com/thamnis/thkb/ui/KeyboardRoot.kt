@@ -26,9 +26,11 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -69,6 +71,7 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Done
@@ -229,6 +232,10 @@ fun KeyboardRoot(
     onDeleteTodoTask: (String) -> Unit = {},
     onClearCompletedTodoTasks: () -> Unit = {},
     onKeyFeedback: () -> Unit,
+    onLightHaptic: () -> Unit = {},
+    onGestureHaptic: () -> Unit = {},
+    showGestureTip: Boolean = false,
+    onDismissGestureTip: () -> Unit = {},
     onCommitText: (String) -> Unit,
     onBackspace: () -> Unit,
     onForwardDelete: () -> Unit = {},
@@ -413,6 +420,40 @@ fun KeyboardRoot(
                                         },
                                     )
                                 } else {
+                                    if (showGestureTip && panelMode == PanelMode.KEYBOARD) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(ActionKeyBgColor)
+                                                .border(1.dp, ReturnBgColor.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                                                .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(
+                                                text = "Tip: Hold ☺ for tools • Glide ↑ ⇧ for char glide • Glide Undo/Redo",
+                                                color = ToolbarTextColor,
+                                                fontSize = 11.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Icon(
+                                                imageVector = Icons.Outlined.Close,
+                                                contentDescription = "Dismiss tip",
+                                                tint = HintTextColor,
+                                                modifier = Modifier
+                                                    .size(16.dp)
+                                                    .clip(CircleShape)
+                                                    .clickable {
+                                                        onLightHaptic()
+                                                        onDismissGestureTip()
+                                                    },
+                                            )
+                                        }
+                                    }
                                     ToolbarRow(
                                         panelMode = panelMode,
                                         canResize = canResizePanel,
@@ -442,6 +483,7 @@ fun KeyboardRoot(
                                         },
                                         onUndo = onUndo,
                                         onRedo = onRedo,
+                                        onLightHaptic = onLightHaptic,
                                     )
                                 }
 
@@ -577,6 +619,8 @@ fun KeyboardRoot(
                                     isForwardDeleteMode = !isForwardDeleteMode
                                 },
                                 onKeyFeedback = onKeyFeedback,
+                                onLightHaptic = onLightHaptic,
+                                onGestureHaptic = onGestureHaptic,
                                 onKeyAction = { keyId, fromAccent ->
                                     if (fromAccent != null) {
                                         if (isEmojiSearchMode) {
@@ -1160,6 +1204,7 @@ private fun ToolbarRow(
     onBackToKeyboard: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
+    onLightHaptic: () -> Unit = {},
 ) {
     val density = LocalDensity.current
     val latestOnResize by rememberUpdatedState(onResizeDeltaDp)
@@ -1319,17 +1364,47 @@ private fun ToolbarRow(
                     onClick = onToggleVoice,
                 )
 
-                // Dedicated Undo / Redo Toolbar Pill (unlabeled with vertical bar divider)
+                // Dedicated Undo / Redo Toolbar Pill (tap buttons or glide horizontally to step history)
+                var undoPressed by remember { mutableStateOf(false) }
+                var redoPressed by remember { mutableStateOf(false) }
+                var undoRedoDragAccumPx by remember { mutableStateOf(0f) }
+                val undoRedoStepPx = with(density) { 18.dp.toPx() }
+                val latestOnUndo by rememberUpdatedState(onUndo)
+                val latestOnRedo by rememberUpdatedState(onRedo)
+                val latestOnLightHaptic by rememberUpdatedState(onLightHaptic)
+
                 Row(
                     modifier = Modifier
                         .height(32.dp)
                         .clip(RoundedCornerShape(50))
                         .background(ActionKeyBgColor)
+                        .pointerInput(Unit) {
+                            detectHorizontalDragGestures(
+                                onDragStart = { undoRedoDragAccumPx = 0f },
+                                onDragEnd = { undoRedoDragAccumPx = 0f },
+                                onDragCancel = { undoRedoDragAccumPx = 0f },
+                                onHorizontalDrag = { change, dragAmount ->
+                                    change.consume()
+                                    undoRedoDragAccumPx += dragAmount
+                                    while (undoRedoDragAccumPx <= -undoRedoStepPx) {
+                                        undoRedoDragAccumPx += undoRedoStepPx
+                                        undoPressed = true
+                                        latestOnLightHaptic()
+                                        latestOnUndo()
+                                    }
+                                    while (undoRedoDragAccumPx >= undoRedoStepPx) {
+                                        undoRedoDragAccumPx -= undoRedoStepPx
+                                        redoPressed = true
+                                        latestOnLightHaptic()
+                                        latestOnRedo()
+                                    }
+                                },
+                            )
+                        }
                         .padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
-                var undoPressed by remember { mutableStateOf(false) }
                 val undoScale by animateFloatAsState(
                     targetValue = if (undoPressed) 0.85f else 1.0f,
                     animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
@@ -1370,7 +1445,6 @@ private fun ToolbarRow(
                         .background(HintTextColor.copy(alpha = 0.35f), RoundedCornerShape(0.5.dp)),
                 )
 
-                var redoPressed by remember { mutableStateOf(false) }
                 val redoScale by animateFloatAsState(
                     targetValue = if (redoPressed) 0.85f else 1.0f,
                     animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
@@ -1474,6 +1548,8 @@ private fun TouchKeyGrid(
     onShowKeyPreview: (KeyPreviewState?) -> Unit,
     onToggleForwardDeleteMode: () -> Unit,
     onKeyFeedback: () -> Unit,
+    onLightHaptic: () -> Unit = {},
+    onGestureHaptic: () -> Unit = {},
     onKeyAction: (String, String?) -> Unit,
     onBackspaceRepeat: () -> Unit,
     onDeleteWord: () -> Unit,
@@ -1553,6 +1629,8 @@ private fun TouchKeyGrid(
     val latestOnShowKeyPreview by rememberUpdatedState(onShowKeyPreview)
     val latestOnToggleForwardDelete by rememberUpdatedState(onToggleForwardDeleteMode)
     val latestOnKeyAction by rememberUpdatedState(onKeyAction)
+    val latestOnLightHaptic by rememberUpdatedState(onLightHaptic)
+    val latestOnGestureHaptic by rememberUpdatedState(onGestureHaptic)
     val latestOnKeyFeedback by rememberUpdatedState(onKeyFeedback)
     val latestOnBackspaceRepeat by rememberUpdatedState(onBackspaceRepeat)
     val latestOnDeleteWord by rememberUpdatedState(onDeleteWord)
@@ -1749,12 +1827,14 @@ private fun TouchKeyGrid(
                                         val stepDx = localPos.x - pointer.lastGlideX
                                         val stepsX = (stepDx / glideStepPx).toInt()
                                         if (stepsX != 0) {
+                                            latestOnLightHaptic()
                                             latestOnMoveCursor(stepsX)
                                             pointer.lastGlideX += stepsX * glideStepPx
                                         }
                                         val stepDy = localPos.y - pointer.lastGlideY
                                         val stepsY = (stepDy / glideVerticalStepPx).toInt()
                                         if (stepsY != 0) {
+                                            latestOnLightHaptic()
                                             latestOnMoveCursorVertical(stepsY)
                                             pointer.lastGlideY += stepsY * glideVerticalStepPx
                                         }
@@ -1785,7 +1865,7 @@ private fun TouchKeyGrid(
                                             "⇧ Glide Mode: Word & Sentence"
                                         }
                                         specialActionSeq++
-                                        latestOnKeyFeedback()
+                                        latestOnGestureHaptic()
                                         latestOnToggleGlideMode()
                                     }
                                 } else if (pointer.keyId == "BACKSPACE" && latestDeleteGesturesEnabled) {
@@ -1867,9 +1947,11 @@ private fun TouchKeyGrid(
                                     } else {
                                         val now = android.os.SystemClock.uptimeMillis()
                                         val isSwipeCandidateKey = latestGlideTypingEnabled &&
-                                            latestIsAlphaLayer &&
                                             pointer.keyId.length == 1 &&
-                                            pointer.keyId[0].isLetter()
+                                            (
+                                                (latestIsAlphaLayer && pointer.keyId[0].isLetter()) ||
+                                                    (!latestIsAlphaLayer && latestGlideCharByChar && !pointer.keyId[0].isWhitespace())
+                                                )
                                         val hoverKey = findHitKey(keyBounds, localPos)
                                         if (pointer.isSwipeTyping) {
                                             if (activeSwipePointerId != id) {
@@ -1903,13 +1985,13 @@ private fun TouchKeyGrid(
                                                             delay(260L)
                                                             val t1 = android.os.SystemClock.uptimeMillis()
                                                             glidedKeyTimestamps[hoverKey] = t1
-                                                            latestOnKeyFeedback()
+                                                            latestOnLightHaptic()
                                                             latestOnKeyAction(hoverKey, null)
                                                             // Hold longer on the same key to repeat (e.g. double letter "ll" or second space)
                                                             delay(520L)
                                                             val t2 = android.os.SystemClock.uptimeMillis()
                                                             glidedKeyTimestamps[hoverKey] = t2
-                                                            latestOnKeyFeedback()
+                                                            latestOnLightHaptic()
                                                             latestOnKeyAction(hoverKey, null)
                                                         }
                                                     }

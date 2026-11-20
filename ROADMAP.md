@@ -1,6 +1,6 @@
 # Roadmap
 
-> Development follows a `v0.x` private POC and stabilization phase before the `v1.0` public release. All `v0.x` pre-release git tags must be tagged as `alpha` (e.g. `v0.1.0-alpha.1`).
+> Development follows a `v0.x` private POC and `v1.0.0-beta.x` stabilization phase before the `v1.0` public release. All pre-release git tags until public GA must be tagged as `beta` (e.g. `v1.0.0-beta.1`, `v1.0.0-beta.2`).
 
 ## `v0.1` — Gboard-Parity POC (Internal)
 
@@ -76,13 +76,14 @@
 ## `v1.0` — Public Release
 
 - [x] **Public Beta (`v1.0.0-beta.1`)**: R8-minified release build, full Dialect Store word browser, Shift glide-up mode switch, hold-Emoji hidden tools, 2D Spacebar cursor dot, live Voice streaming, and Alphanumeric Emoji search
+- [x] **Beta 2 (`v1.0.0-beta.2`)**: Toolbar Undo/Redo glide, char-glided symbols & numbers, dismissible first-launch gesture tip, Offline Voice Packs shortcut, and distinct haptic feedback primitives
 - [ ] Final beta feedback, touch latency tuning, and signed `v1.0.0` website release
 - [x] Layout & settings backup/export (JSON) *(shipped in v0.4)*
 
 ### Backlog — After `v1.0`
 
-- [ ] **Char-Glided Symbols & Numbers**: Support character-by-character gliding across symbol (`?123`, `=\<`) and number (`123`) layers
-- [ ] **Glide in Toolbar for Undo / Redo**: Swipe/glide horizontally across the top toolbar to step smoothly through Undo (`←`) and Redo (`→`) history snapshots
+- [x] **Char-Glided Symbols & Numbers**: Support character-by-character gliding across symbol (`?123`, `=\<`) and number (`123`) layers *(shipped in v1.0.0-beta.2)*
+- [x] **Glide in Toolbar for Undo / Redo**: Swipe/glide horizontally across the top toolbar to step smoothly through Undo (`←`) and Redo (`→`) history snapshots *(shipped in v1.0.0-beta.2)*
 
 ## `v1.1` — Ergonomics & Themes
 

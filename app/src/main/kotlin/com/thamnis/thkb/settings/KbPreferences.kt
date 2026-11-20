@@ -30,6 +30,7 @@ data class KbSettings(
     val glideCharByChar: Boolean = false,
     val autocompleteMode: String = AUTOCOMPLETE_MODE_ADVANCED,
     val ivorianFrenchEnabled: Boolean = true,
+    val dismissedGestureTip: Boolean = false,
 ) {
     companion object {
         const val DEFAULT_LAYOUT_ID = "qwerty_en"
@@ -133,6 +134,11 @@ class KbPreferences(context: Context) {
         _settings.value = readSettings()
     }
 
+    fun setDismissedGestureTip(dismissed: Boolean) {
+        prefs.edit().putBoolean(KEY_DISMISSED_GESTURE_TIP, dismissed).apply()
+        _settings.value = readSettings()
+    }
+
     fun toggleFavoriteItem(item: String) {
         val current = _settings.value.favoriteItems.toMutableSet()
         if (!current.add(item)) {
@@ -230,6 +236,7 @@ class KbPreferences(context: Context) {
         autocompleteMode = prefs.getString(KEY_AUTOCOMPLETE_MODE, KbSettings.AUTOCOMPLETE_MODE_ADVANCED)
             ?: KbSettings.AUTOCOMPLETE_MODE_ADVANCED,
         ivorianFrenchEnabled = prefs.getBoolean(KEY_IVORIAN_FRENCH_ENABLED, true),
+        dismissedGestureTip = prefs.getBoolean(KEY_DISMISSED_GESTURE_TIP, false),
     )
 
     companion object {
@@ -251,6 +258,7 @@ class KbPreferences(context: Context) {
         private const val KEY_GLIDE_CHAR_BY_CHAR = "glide_char_by_char"
         private const val KEY_AUTOCOMPLETE_MODE = "autocomplete_mode"
         private const val KEY_IVORIAN_FRENCH_ENABLED = "ivorian_french_enabled"
+        private const val KEY_DISMISSED_GESTURE_TIP = "dismissed_gesture_tip"
     }
 }
 

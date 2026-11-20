@@ -248,6 +248,24 @@ class ThKbInputMethodService :
                             sound = settings.soundEnabled,
                         )
                     },
+                    onLightHaptic = {
+                        playFeedback(
+                            haptics = settings.hapticsEnabled,
+                            sound = false,
+                            style = HapticStyle.LIGHT_TICK,
+                        )
+                    },
+                    onGestureHaptic = {
+                        playFeedback(
+                            haptics = settings.hapticsEnabled,
+                            sound = false,
+                            style = HapticStyle.GESTURE,
+                        )
+                    },
+                    showGestureTip = !settings.dismissedGestureTip,
+                    onDismissGestureTip = {
+                        preferences.setDismissedGestureTip(true)
+                    },
                     suggestions = suggestions,
                     onSelectSuggestion = { candidate ->
                         val ic = currentInputConnection ?: return@KeyboardRoot
@@ -1241,11 +1259,26 @@ class ThKbInputMethodService :
         return KeyboardStateLogic.shouldAutoCapBeforeCursor(before, inputContext, autoCapPref)
     }
 
-    private fun playFeedback(haptics: Boolean, sound: Boolean) {
+    private enum class HapticStyle {
+        TAP,
+        LIGHT_TICK,
+        GESTURE,
+    }
+
+    private fun playFeedback(
+        haptics: Boolean,
+        sound: Boolean,
+        style: HapticStyle = HapticStyle.TAP,
+    ) {
         if (haptics) {
+            val constant = when (style) {
+                HapticStyle.TAP -> HapticFeedbackConstants.KEYBOARD_TAP
+                HapticStyle.LIGHT_TICK -> HapticFeedbackConstants.CLOCK_TICK
+                HapticStyle.GESTURE -> HapticFeedbackConstants.LONG_PRESS
+            }
             @Suppress("DEPRECATION")
             inputComposeView?.performHapticFeedback(
-                HapticFeedbackConstants.KEYBOARD_TAP,
+                constant,
                 HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
             )
         }
