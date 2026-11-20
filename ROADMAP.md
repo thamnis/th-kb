@@ -82,6 +82,7 @@
 ### Backlog — After `v1.0`
 
 - [ ] **Char-Glided Symbols & Numbers**: Support character-by-character gliding across symbol (`?123`, `=\<`) and number (`123`) layers
+- [ ] **Glide in Toolbar for Undo / Redo**: Swipe/glide horizontally across the top toolbar to step smoothly through Undo (`←`) and Redo (`→`) history snapshots
 
 ## `v1.1` — Ergonomics & Themes
 
