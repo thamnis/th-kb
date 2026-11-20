@@ -24,9 +24,25 @@ class KeyboardStateLogicTest {
     fun resolveKeyLabelRespectsShiftAndReturnAction() {
         assertEquals("a", KeyboardStateLogic.resolveKeyLabel("a", ShiftState.OFF, ReturnAction.DEFAULT))
         assertEquals("A", KeyboardStateLogic.resolveKeyLabel("a", ShiftState.ONCE, ReturnAction.DEFAULT))
+        assertEquals("'", KeyboardStateLogic.resolveKeyLabel("'", ShiftState.OFF, ReturnAction.DEFAULT))
+        assertEquals("?", KeyboardStateLogic.resolveKeyLabel("'", ShiftState.ONCE, ReturnAction.DEFAULT))
+        assertEquals("?", KeyboardStateLogic.resolveKeyLabel("'", ShiftState.CAPS_LOCK, ReturnAction.DEFAULT))
         assertEquals("Search", KeyboardStateLogic.resolveKeyLabel("RETURN", ShiftState.OFF, ReturnAction.SEARCH))
         assertEquals("?123", KeyboardStateLogic.resolveKeyLabel("SYMBOLS", ShiftState.OFF, ReturnAction.DEFAULT))
         assertEquals("=\\<", KeyboardStateLogic.resolveKeyLabel("MORE_SYMBOLS", ShiftState.OFF, ReturnAction.DEFAULT))
+    }
+
+    @Test
+    fun voiceStreamTrimsLeftmostWordsWhenGrowing() {
+        val shortStream = com.thamnis.thkb.ui.formatLeftTrimmedVoiceStream("bonjour mon ami", maxWords = 5, maxChars = 40)
+        assertEquals("bonjour mon ami", shortStream)
+
+        val longStream = com.thamnis.thkb.ui.formatLeftTrimmedVoiceStream(
+            "un deux trois quatre cinq six sept huit",
+            maxWords = 4,
+            maxChars = 40,
+        )
+        assertEquals("… cinq six sept huit", longStream)
     }
 
     @Test

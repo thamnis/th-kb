@@ -99,6 +99,9 @@ internal fun EmojiAndKaomojiPanel(
     favoriteItems: Set<String>,
     recentEmojis: List<String>,
     emojiGridState: LazyGridState,
+    searchQuery: String = "",
+    onSearchQueryChange: (String) -> Unit = {},
+    onOpenKeyboardSearch: () -> Unit = {},
     onResizeDeltaDp: (Float) -> Unit,
     onBackToKeyboard: () -> Unit,
     onToggleFavorite: (String) -> Unit,
@@ -108,8 +111,7 @@ internal fun EmojiAndKaomojiPanel(
     onBackspaceRepeat: () -> Unit,
 ) {
     var selectedTab by remember { mutableStateOf(0) } // 0 = Emojis, 1 = Kaomoji :-), 2 = Favorites ★
-    var isSearchActive by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
+    val isSearchActive = searchQuery.isNotBlank()
 
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -170,7 +172,7 @@ internal fun EmojiAndKaomojiPanel(
     val kaomojiCategories = remember(kaomojiItems) { listOf("all") + kaomojiItems.map { it.category }.distinct() }
     var selectedKaomojiCat by remember { mutableStateOf("all") }
 
-    val searchOverhead = if (isSearchActive) 84f else 0f
+    val searchOverhead = if (isSearchActive) 38f else 0f
     val contentHeight = (panelHeightDp - 96f - searchOverhead).coerceAtLeast(110f).dp
 
     Column(
@@ -178,7 +180,7 @@ internal fun EmojiAndKaomojiPanel(
             .fillMaxWidth()
             .height(panelHeightDp.dp),
     ) {
-        // Top Bar: Back arrow + Search Toggle + Symbol Category Icons (plus vertical drag-to-resize)
+        // Top Bar: Back arrow + Search (Alphanum KB) + Symbol Category Icons (plus vertical drag-to-resize)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -222,21 +224,18 @@ internal fun EmojiAndKaomojiPanel(
                     )
                 }
 
-                // Inline Rust-Backed Search Toggle Button (Proposition C)
+                // Opens the full Alphanumeric Keyboard to type-search emojis
                 Box(
                     modifier = Modifier
                         .size(34.dp)
                         .clip(CircleShape)
                         .background(if (isSearchActive) ReturnBgColor else ActionKeyBgColor)
-                        .clickable {
-                            isSearchActive = !isSearchActive
-                            if (!isSearchActive) searchQuery = ""
-                        },
+                        .clickable { onOpenKeyboardSearch() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        imageVector = if (isSearchActive) Icons.Outlined.Close else Icons.Outlined.Search,
-                        contentDescription = "Search Emojis",
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = "Search Emojis with Keyboard",
                         tint = if (isSearchActive) ReturnFgColor else ToolbarTextColor,
                         modifier = Modifier.size(18.dp),
                     )
@@ -270,8 +269,7 @@ internal fun EmojiAndKaomojiPanel(
                                     .clip(CircleShape)
                                     .background(catBg)
                                     .clickable {
-                                        isSearchActive = false
-                                        searchQuery = ""
+                                        onSearchQueryChange("")
                                         scope.launch {
                                             emojiGridState.scrollToItem(sectionStartIndices[idx])
                                         }
@@ -320,111 +318,40 @@ internal fun EmojiAndKaomojiPanel(
             }
         }
 
-        // Inline Bilingual Emoji & Kaomoji Search Strip (EN / FR / Nouchi)
+        // Active Search Filter Bar (tapping re-opens the Alphanumeric Keyboard to edit query)
         AnimatedVisibility(
             visible = isSearchActive,
             enter = expandVertically(tween(150)) + fadeIn(tween(140)),
             exit = shrinkVertically(tween(120)) + fadeOut(tween(100)),
         ) {
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                    .height(32.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(ActionKeyBgColor)
+                    .clickable { onOpenKeyboardSearch() }
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Row(
+                Text(
+                    text = "🔍 $searchQuery (Tap to edit)",
+                    color = Color.White,
+                    fontSize = 12.5.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "Clear",
+                    color = ReturnBgColor,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(32.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(ActionKeyBgColor)
-                        .padding(horizontal = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = if (searchQuery.isEmpty()) {
-                            "Search EN / FR / Nouchi (e.g. feu, coeur, garba, ci)…"
-                        } else {
-                            "🔍 $searchQuery"
-                        },
-                        color = if (searchQuery.isEmpty()) HintTextColor else Color.White,
-                        fontSize = 12.5.sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (searchQuery.isNotEmpty()) {
-                        Text(
-                            text = "Clear",
-                            color = ReturnBgColor,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable { searchQuery = "" }
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
-                    }
-                }
-
-                // Compact inline quick-search letters & popular bilingual tags
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(28.dp)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    listOf("feu", "coeur", "rire", "merci", "ci", "garba", "fete", "love", "ok").forEach { tag ->
-                        val activeTag = searchQuery.equals(tag, ignoreCase = true)
-                        Box(
-                            modifier = Modifier
-                                .height(24.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(if (activeTag) ReturnBgColor else KeyBgColor)
-                                .clickable {
-                                    searchQuery = if (activeTag) "" else tag
-                                }
-                                .padding(horizontal = 9.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = tag,
-                                color = if (activeTag) ReturnFgColor else Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                            )
-                        }
-                    }
-                }
-
-                // Single-row scrollable A-Z mini filter bar for typing any custom search query
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(24.dp)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    "abcdefghijklmnopqrstuvwxyz".forEach { ch ->
-                        Box(
-                            modifier = Modifier
-                                .size(width = 22.dp, height = 22.dp)
-                                .clip(RoundedCornerShape(5.dp))
-                                .background(KeyBgColor)
-                                .clickable { searchQuery += ch },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = ch.toString(),
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                            )
-                        }
-                    }
-                }
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onSearchQueryChange("") }
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
             }
         }
 
@@ -619,24 +546,16 @@ internal fun EmojiAndKaomojiPanel(
                         scaleY = backspaceScale
                     }
                     .clip(RoundedCornerShape(50))
-                    .pointerInput(isSearchActive, searchQuery) {
+                    .pointerInput(Unit) {
                         awaitEachGesture {
                             val down = awaitPointerEvent().changes.firstOrNull { it.pressed } ?: return@awaitEachGesture
                             down.consume()
                             backspacePressed = true
-                            if (isSearchActive && searchQuery.isNotEmpty()) {
-                                searchQuery = searchQuery.dropLast(1)
-                            } else {
-                                latestOnBackspace()
-                            }
+                            latestOnBackspace()
                             val repeatJob = scope.launch {
                                 delay(380L)
                                 while (true) {
-                                    if (isSearchActive && searchQuery.isNotEmpty()) {
-                                        searchQuery = searchQuery.dropLast(1)
-                                    } else {
-                                        latestOnBackspaceRepeat()
-                                    }
+                                    latestOnBackspaceRepeat()
                                     delay(50L)
                                 }
                             }

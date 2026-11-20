@@ -582,9 +582,9 @@ class SettingsActivity : ComponentActivity() {
                                         ) {
                                             Text(
                                                 text = "• Sentence Glide: Slide across letters, touch Spacebar, and keep sliding the next word.\n" +
-                                                    "• Char-by-Char Glide: Toggle 'Glide: Char' in the toolbar (or pause on a key) to glide letter-by-letter.\n" +
-                                                    "• Hold Spacebar: Switch between French AZERTY & English QWERTY.\n" +
-                                                    "• Slide Spacebar: Move the cursor left/right or up/down with 2D spring animation.\n" +
+                                                    "• Glide Up on Shift (⇧): Switch between Word Glide and Char-by-Char Glide.\n" +
+                                                    "• Hold Spacebar (1s): Switch between French AZERTY & English QWERTY.\n" +
+                                                    "• Slide Spacebar: Move the cursor left/right or up/down with the 2D dot indicator.\n" +
                                                     "• Glide Up on ?123 / ABC: Switch between Numpad (123) and Symbols (?#).",
                                                 fontSize = 13.sp,
                                                 color = SettingsTextSecondary,

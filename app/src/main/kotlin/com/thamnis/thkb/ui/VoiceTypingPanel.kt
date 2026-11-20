@@ -131,21 +131,27 @@ internal fun VoiceTypingPanel(
                 }
             }
             Spacer(modifier = Modifier.height(10.dp))
+            val streamedDisplay = if (voiceUiState.partialText.isNotEmpty()) {
+                formatLeftTrimmedVoiceStream(voiceUiState.partialText)
+            } else {
+                ""
+            }
             Text(
                 text = when {
                     voiceUiState.errorMessage != null -> voiceUiState.errorMessage
-                    voiceUiState.partialText.isNotEmpty() -> voiceUiState.partialText
+                    streamedDisplay.isNotEmpty() -> streamedDisplay
                     voiceUiState.isListening -> "Speak now ($langLabel)..."
                     else -> "Tap microphone to dictate"
                 },
                 color = when {
                     voiceUiState.errorMessage != null -> Color(0xFFFCA5A5)
-                    voiceUiState.partialText.isNotEmpty() -> Color.White
+                    streamedDisplay.isNotEmpty() -> Color.White
                     else -> HintTextColor
                 },
-                fontSize = if (voiceUiState.partialText.isNotEmpty()) 15.sp else 13.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+                fontSize = if (streamedDisplay.isNotEmpty()) 15.sp else 13.sp,
+                fontWeight = if (streamedDisplay.isNotEmpty()) FontWeight.Medium else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
             )
         }
 
@@ -209,4 +215,24 @@ internal fun VoiceTypingPanel(
             }
         }
     }
+}
+
+/**
+ * Keeps only the most recent trailing words in the live voice stream,
+ * removing words furthest to the left as new words are spoken.
+ */
+internal fun formatLeftTrimmedVoiceStream(
+    rawText: String,
+    maxWords: Int = 7,
+    maxChars: Int = 40,
+): String {
+    val words = rawText.trim().split("\\s+".toRegex()).filter { it.isNotEmpty() }.toMutableList()
+    if (words.isEmpty()) return ""
+    var trimmedLeft = false
+    while (words.size > 1 && (words.size > maxWords || words.joinToString(" ").length > maxChars)) {
+        words.removeAt(0)
+        trimmedLeft = true
+    }
+    val tail = words.joinToString(" ")
+    return if (trimmedLeft) "… $tail" else tail
 }

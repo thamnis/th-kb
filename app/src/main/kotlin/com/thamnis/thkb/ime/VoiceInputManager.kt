@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognitionService
 import android.speech.RecognizerIntent
@@ -40,13 +41,24 @@ data class VoiceUiState(
  */
 class VoiceInputManager(
     context: Context,
+    private val onPartialText: (String) -> Unit = {},
     private val onCommittedText: (String) -> Unit,
 ) {
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
     private var sessionActive = false
+    private var userRequestedStop = false
     private var triedDefaultFallback = false
+    private var lastVoiceActivityMs = 0L
+    private var accumulatedSessionWords = ""
+
+    companion object {
+        private const val VOICE_MAX_SILENCE_WAIT_MS = 14_000L
+        private const val COMPLETE_SILENCE_EXTRA_MS = 7_000L
+        private const val POSSIBLY_COMPLETE_SILENCE_EXTRA_MS = 5_000L
+        private const val MIN_SPEECH_LENGTH_EXTRA_MS = 12_000L
+    }
 
     @Volatile
     private var pcmRecordActive = false
@@ -96,11 +108,18 @@ class VoiceInputManager(
 
     fun startListening(languageTag: String, useUnboundDefault: Boolean = false) {
         mainHandler.post {
-            startListeningOnMain(languageTag, useUnboundDefault)
+            userRequestedStop = false
+            lastVoiceActivityMs = SystemClock.uptimeMillis()
+            accumulatedSessionWords = ""
+            startListeningOnMain(languageTag, useUnboundDefault, isContinuation = false)
         }
     }
 
-    private fun startListeningOnMain(languageTag: String, useUnboundDefault: Boolean) {
+    private fun startListeningOnMain(
+        languageTag: String,
+        useUnboundDefault: Boolean,
+        isContinuation: Boolean = false,
+    ) {
         if (!VoicePermissionBridge.hasRecordAudioPermission(appContext)) {
             _state.value = _state.value.copy(
                 panelVisible = true,
@@ -111,8 +130,10 @@ class VoiceInputManager(
             return
         }
 
+        val carryOverText = if (isContinuation) accumulatedSessionWords else ""
         stopInternalOnMain(keepPanelOpen = true, resetError = true)
-        if (!useUnboundDefault) {
+        accumulatedSessionWords = carryOverText
+        if (!useUnboundDefault && !isContinuation) {
             triedDefaultFallback = false
         }
 
@@ -147,7 +168,7 @@ class VoiceInputManager(
             isListening = true,
             isOnDevice = true,
             languageTag = languageTag,
-            partialText = "",
+            partialText = carryOverText,
             rmsDb = 0f,
             errorMessage = null,
         )
@@ -161,10 +182,15 @@ class VoiceInputManager(
                 )
             }
 
-            override fun onBeginningOfSpeech() = Unit
+            override fun onBeginningOfSpeech() {
+                lastVoiceActivityMs = SystemClock.uptimeMillis()
+            }
 
             override fun onRmsChanged(rmsdB: Float) {
                 val clamped = rmsdB.coerceIn(0f, 10f)
+                if (clamped >= 3.2f) {
+                    lastVoiceActivityMs = SystemClock.uptimeMillis()
+                }
                 _state.value = _state.value.copy(rmsDb = clamped)
             }
 
@@ -183,7 +209,7 @@ class VoiceInputManager(
 
                 if (isServiceBindError && !triedDefaultFallback && preferredComponent != null) {
                     triedDefaultFallback = true
-                    startListeningOnMain(languageTag, useUnboundDefault = true)
+                    startListeningOnMain(languageTag, useUnboundDefault = true, isContinuation = isContinuation)
                     return
                 }
 
@@ -193,14 +219,26 @@ class VoiceInputManager(
                     return
                 }
 
+                val isSilenceOrNoMatch = error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
+                    error == SpeechRecognizer.ERROR_NO_MATCH
+                val elapsedSilence = SystemClock.uptimeMillis() - lastVoiceActivityMs
+                if (isSilenceOrNoMatch && !userRequestedStop && elapsedSilence < VOICE_MAX_SILENCE_WAIT_MS) {
+                    mainHandler.postDelayed({
+                        if (!userRequestedStop) {
+                            startListeningOnMain(languageTag, useUnboundDefault, isContinuation = true)
+                        }
+                    }, 120L)
+                    return
+                }
+
                 val msg = when (error) {
                     SpeechRecognizer.ERROR_AUDIO -> "Microphone busy. Tap Mic to retry."
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission required."
                     SpeechRecognizer.ERROR_NETWORK,
                     SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
                     -> "Offline voice pack needed. Tap System Voice ↗ or download pack."
-                    SpeechRecognizer.ERROR_NO_MATCH -> "Didn't catch that. Tap Mic to speak again."
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected. Tap Mic to speak."
+                    SpeechRecognizer.ERROR_NO_MATCH -> "Listening paused after silence. Tap Mic to speak."
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Listening paused after silence. Tap Mic to speak."
                     else -> "Voice service busy ($error). Tap System Voice ↗."
                 }
                 _state.value = _state.value.copy(
@@ -218,17 +256,35 @@ class VoiceInputManager(
                     ?.firstOrNull()
                     ?.trim()
                     .orEmpty()
-                val fallbackPartial = _state.value.partialText.trim()
-                val finalSpoken = best.ifEmpty { fallbackPartial }
-                _state.value = _state.value.copy(
-                    panelVisible = false,
-                    isListening = false,
-                    partialText = "",
-                    rmsDb = 0f,
-                    errorMessage = null,
-                )
+                val currentSegmentPartial = _state.value.partialText
+                    .removePrefix(accumulatedSessionWords)
+                    .trim()
+                val finalSpoken = best.ifEmpty { currentSegmentPartial }
                 if (finalSpoken.isNotEmpty()) {
+                    lastVoiceActivityMs = SystemClock.uptimeMillis()
+                    accumulatedSessionWords = if (accumulatedSessionWords.isEmpty()) {
+                        finalSpoken
+                    } else {
+                        "$accumulatedSessionWords $finalSpoken"
+                    }
                     onCommittedText(finalSpoken)
+                }
+
+                val elapsedSilence = SystemClock.uptimeMillis() - lastVoiceActivityMs
+                if (!userRequestedStop && elapsedSilence < VOICE_MAX_SILENCE_WAIT_MS) {
+                    mainHandler.postDelayed({
+                        if (!userRequestedStop) {
+                            startListeningOnMain(languageTag, useUnboundDefault, isContinuation = true)
+                        }
+                    }, 90L)
+                } else {
+                    _state.value = _state.value.copy(
+                        panelVisible = false,
+                        isListening = false,
+                        partialText = "",
+                        rmsDb = 0f,
+                        errorMessage = null,
+                    )
                 }
             }
 
@@ -239,7 +295,14 @@ class VoiceInputManager(
                     ?.trim()
                     .orEmpty()
                 if (partial.isNotEmpty()) {
-                    _state.value = _state.value.copy(partialText = partial)
+                    lastVoiceActivityMs = SystemClock.uptimeMillis()
+                    val combined = if (accumulatedSessionWords.isEmpty()) {
+                        partial
+                    } else {
+                        "$accumulatedSessionWords $partial"
+                    }
+                    _state.value = _state.value.copy(partialText = combined)
+                    onPartialText(partial)
                 }
             }
 
@@ -253,6 +316,12 @@ class VoiceInputManager(
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, COMPLETE_SILENCE_EXTRA_MS)
+            putExtra(
+                RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
+                POSSIBLY_COMPLETE_SILENCE_EXTRA_MS,
+            )
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, MIN_SPEECH_LENGTH_EXTRA_MS)
         }
         runCatching {
             sr.startListening(intent)
@@ -345,7 +414,10 @@ class VoiceInputManager(
 
     fun stopAndCommitIfPartial() {
         mainHandler.post {
-            val currentPartial = _state.value.partialText.trim()
+            userRequestedStop = true
+            val currentSegmentPartial = _state.value.partialText
+                .removePrefix(accumulatedSessionWords)
+                .trim()
             val wasListening = sessionActive
             val sr = recognizer
             if (wasListening && sr != null) {
@@ -353,20 +425,25 @@ class VoiceInputManager(
                 return@post
             }
             stopInternalOnMain(keepPanelOpen = false, resetError = true)
-            if (currentPartial.isNotEmpty()) {
-                onCommittedText(currentPartial)
+            accumulatedSessionWords = ""
+            if (currentSegmentPartial.isNotEmpty()) {
+                onCommittedText(currentSegmentPartial)
             }
         }
     }
 
     fun cancel() {
         mainHandler.post {
+            userRequestedStop = true
+            accumulatedSessionWords = ""
             stopInternalOnMain(keepPanelOpen = false, resetError = true)
         }
     }
 
     fun destroy() {
         mainHandler.post {
+            userRequestedStop = true
+            accumulatedSessionWords = ""
             stopInternalOnMain(keepPanelOpen = false, resetError = true)
         }
     }

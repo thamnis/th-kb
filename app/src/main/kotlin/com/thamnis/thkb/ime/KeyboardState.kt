@@ -93,6 +93,7 @@ object KeyboardStateLogic {
             "EMOJI_KEY" -> "☺"
             "SPACE" -> "EN • FR"
             "RETURN" -> returnAction.label
+            "'" -> if (shiftState != ShiftState.OFF) "?" else "'"
             else -> if (shiftState != ShiftState.OFF && rawKey.length == 1 && rawKey[0].isLetter()) {
                 rawKey.uppercase()
             } else {
@@ -115,7 +116,7 @@ object KeyboardStateLogic {
         "q" to "@", "s" to "#", "d" to "$", "f" to "_", "g" to "&",
         "h" to "-", "j" to "+", "k" to "(", "l" to ")", "m" to "?",
         "w" to "*", "x" to "\"", "c" to "'", "v" to ":", "b" to ";",
-        "n" to "!",
+        "n" to "!", "'" to "?",
     )
 
     fun hintForKey(layoutId: String, rawKey: String): String? =

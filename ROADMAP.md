@@ -78,6 +78,10 @@
 - [ ] Daily-driver stability, touch latency tuning, and `v0.x` bug fixes
 - [x] Layout & settings backup/export (JSON) *(shipped in v0.4)*
 
+### Backlog — After `v1.0`
+
+- [ ] **Char-Glided Symbols & Numbers**: Support character-by-character gliding across symbol (`?123`, `=\<`) and number (`123`) layers
+
 ## `v1.1` — Ergonomics & Themes
 
 - [x] **Numeric-only keyboard mode** (dedicated large 3×4 numpad) *(shipped in v0.4)*
@@ -111,6 +115,11 @@
 - [ ] **Built-in Note taker** (quick scratchpad notes panel inside the keyboard)
 - [x] **Built-in Animated Todo list** *(shipped in v0.3)*
 - [ ] **Currency converter** (inline currency conversion calculator in the keyboard utility bar)
+
+### Backlog — After `v2.0`
+
+- [ ] **Glide-Typed Emoji & Glide-Typed Kaomoji**: Glide across keys or cells to type/predict emojis and kaomojis
+- [ ] **Language-Specific Punctuation Rules**: Automatic typography and spacing rules per language (e.g. French spacing before `?`, `!`, `;`, `:` vs. English tight punctuation)
 
 ## `v3.0` — Simple Mode & Distraction-Free Workflows
 

@@ -87,6 +87,9 @@ class ThKbInputMethodService :
     private var lastSpaceCommitMs = 0L
     private var voiceLanguageOverride by mutableStateOf<String?>(null)
     private var pendingVoiceStartAfterPermission = false
+    private var activeVoiceComposing = false
+    private var activeVoiceLeadingSpace = false
+    private var activeVoiceCapStart = false
     private val undoStack = ArrayDeque<TextSnapshot>()
     private val redoStack = ArrayDeque<TextSnapshot>()
     private var lastCharSnapshotMs = 0L
@@ -113,9 +116,15 @@ class ThKbInputMethodService :
         suggestionEngine = SuggestionEngine(this)
         suggestionEngine.syncPersonalDictionary(personalDictionary.state.value, personalDictionary.toJson())
         suggestionEngine.syncDialectOverlay(dialectManager.buildMergedOverlayJson())
-        voiceInputManager = VoiceInputManager(this) { spokenText ->
-            commitVoiceResult(spokenText)
-        }
+        voiceInputManager = VoiceInputManager(
+            context = this,
+            onPartialText = { partialText ->
+                streamVoicePartial(partialText)
+            },
+            onCommittedText = { spokenText ->
+                commitVoiceResult(spokenText)
+            },
+        )
         Thread {
             suggestionEngine.warmUpAsync()
             assets.loadEmojiSections()
@@ -457,6 +466,10 @@ class ThKbInputMethodService :
                         voiceInputManager.stopAndCommitIfPartial()
                     },
                     onCancelVoiceTyping = {
+                        if (activeVoiceComposing) {
+                            currentInputConnection?.finishComposingText()
+                            activeVoiceComposing = false
+                        }
                         voiceInputManager.cancel()
                     },
                     onToggleVoiceLanguage = {
@@ -545,22 +558,63 @@ class ThKbInputMethodService :
         }
     }
 
-    private fun commitVoiceResult(spokenText: String) {
-        val cleaned = spokenText.trim()
-        if (cleaned.isEmpty()) return
+    private fun streamVoicePartial(partialText: String) {
+        val cleaned = partialText.trim()
+        if (cleaned.isEmpty() || isRawInput) return
         val ic = currentInputConnection ?: return
         val settings = preferences.settings.value
-        val capStart = shouldAutoCapAtCurrentCursor(settings.autoCapOnOpen)
-        val formatted = if (capStart) {
+        if (!activeVoiceComposing) {
+            captureUndoSnapshot(coalesceTyping = false)
+            activeVoiceCapStart = shouldAutoCapAtCurrentCursor(settings.autoCapOnOpen)
+            val beforeChar = ic.getTextBeforeCursor(1, 0)?.firstOrNull()
+            activeVoiceLeadingSpace = beforeChar != null && !beforeChar.isWhitespace() &&
+                beforeChar !in charArrayOf('(', '[', '{', '"', '\'', '/')
+            activeVoiceComposing = true
+        }
+        val formatted = if (activeVoiceCapStart) {
             cleaned.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
         } else {
             cleaned
         }
-        val beforeChar = ic.getTextBeforeCursor(1, 0)?.firstOrNull()
-        val needsSpace = beforeChar != null && !beforeChar.isWhitespace() &&
-            beforeChar !in charArrayOf('(', '[', '{', '"', '\'', '/')
-        val payload = if (needsSpace) " $formatted" else formatted
-        commitTextSafe(payload)
+        val payload = if (activeVoiceLeadingSpace) " $formatted" else formatted
+        ic.setComposingText(payload, 1)
+    }
+
+    private fun commitVoiceResult(spokenText: String) {
+        val cleaned = spokenText.trim()
+        if (cleaned.isEmpty()) {
+            if (activeVoiceComposing) {
+                currentInputConnection?.finishComposingText()
+                activeVoiceComposing = false
+            }
+            return
+        }
+        val ic = currentInputConnection ?: return
+        val settings = preferences.settings.value
+        val payload = if (activeVoiceComposing) {
+            val formatted = if (activeVoiceCapStart) {
+                cleaned.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            } else {
+                cleaned
+            }
+            val res = if (activeVoiceLeadingSpace) " $formatted" else formatted
+            ic.commitText(res, 1)
+            activeVoiceComposing = false
+            res
+        } else {
+            val capStart = shouldAutoCapAtCurrentCursor(settings.autoCapOnOpen)
+            val formatted = if (capStart) {
+                cleaned.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            } else {
+                cleaned
+            }
+            val beforeChar = ic.getTextBeforeCursor(1, 0)?.firstOrNull()
+            val needsSpace = beforeChar != null && !beforeChar.isWhitespace() &&
+                beforeChar !in charArrayOf('(', '[', '{', '"', '\'', '/')
+            val res = if (needsSpace) " $formatted" else formatted
+            commitTextSafe(res)
+            res
+        }
         pendingReplacement = PendingReplacement(originalPrefix = "", replacedText = payload)
         swipeAlternativesTail = null
         playFeedback(haptics = settings.hapticsEnabled, sound = settings.soundEnabled)
@@ -630,18 +684,36 @@ class ThKbInputMethodService :
         val ic = currentInputConnection ?: return false
         val before = ic.getTextBeforeCursor(96, 0) ?: return false
         val (ctxWords, prefix) = suggestionEngine.extractContext(before)
-        if (prefix.length < 2 || prefix == suppressedAutoReplacePrefix) {
+        if (prefix.isEmpty() || prefix == suppressedAutoReplacePrefix) {
             return false
         }
         val capHint = shouldAutoCapAtCurrentCursor(settings.autoCapOnOpen)
-        val replacement = suggestionEngine.findAutoReplacement(
-            layoutId = effectiveLayoutId,
-            contextWords = ctxWords,
-            prefix = prefix,
-            mode = KbSettings.AUTOCOMPLETE_MODE_ADVANCED,
-            ivorianEnabled = false,
-            capitalizeHint = capHint,
-        ) ?: return false
+        val replacement = if (triggerText == " ") {
+            // Space commits the top-1 suggestion (and Backspace cancels it back to `prefix`)
+            suggestions.firstOrNull { !it.isLiteral }
+                ?: suggestionEngine.suggestForInput(
+                    layoutId = effectiveLayoutId,
+                    contextWords = ctxWords,
+                    prefix = prefix,
+                    mode = KbSettings.AUTOCOMPLETE_MODE_ADVANCED,
+                    ivorianEnabled = false,
+                    capitalizeHint = capHint,
+                    maxResults = 3,
+                ).firstOrNull()
+        } else {
+            if (prefix.length < 2) return false
+            suggestionEngine.findAutoReplacement(
+                layoutId = effectiveLayoutId,
+                contextWords = ctxWords,
+                prefix = prefix,
+                mode = KbSettings.AUTOCOMPLETE_MODE_ADVANCED,
+                ivorianEnabled = false,
+                capitalizeHint = capHint,
+            )
+        } ?: return false
+        if (replacement.word == prefix) {
+            return false
+        }
 
         val fullReplacedText = replacement.word + triggerText
         captureUndoSnapshot(coalesceTyping = false)

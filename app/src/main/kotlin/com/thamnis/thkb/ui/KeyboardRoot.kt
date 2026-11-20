@@ -155,6 +155,7 @@ import com.thamnis.thkb.data.KaomojiItem
 import com.thamnis.thkb.data.TodoTask
 import com.thamnis.thkb.engine.KeyCenterPoint
 import com.thamnis.thkb.engine.SuggestionCandidate
+import com.thamnis.thkb.engine.SuggestionEngine
 import com.thamnis.thkb.engine.SwipeTrailPoint
 import com.thamnis.thkb.ime.AccentPopupState
 import com.thamnis.thkb.ime.InputContext
@@ -273,6 +274,8 @@ fun KeyboardRoot(
     var keyPreview by remember(inputSessionKey) { mutableStateOf<KeyPreviewState?>(null) }
     var isForwardDeleteMode by remember(inputSessionKey) { mutableStateOf(false) }
     var ctrlActive by remember(inputSessionKey) { mutableStateOf(false) }
+    var isEmojiSearchMode by remember(inputSessionKey) { mutableStateOf(false) }
+    var emojiSearchQuery by remember(inputSessionKey) { mutableStateOf("") }
     var scrollPanelHeightDp by remember { mutableStateOf(250f) }
     val emojiGridState = rememberLazyGridState()
     val density = LocalDensity.current
@@ -354,11 +357,20 @@ fun KeyboardRoot(
                                 favoriteItems = favoriteItems,
                                 recentEmojis = recentEmojis,
                                 emojiGridState = emojiGridState,
+                                searchQuery = emojiSearchQuery,
+                                onSearchQueryChange = { emojiSearchQuery = it },
+                                onOpenKeyboardSearch = {
+                                    onKeyFeedback()
+                                    isEmojiSearchMode = true
+                                    layer = KeyboardLayer.ALPHA
+                                    panelMode = PanelMode.KEYBOARD
+                                },
                                 onResizeDeltaDp = { deltaDp ->
                                     scrollPanelHeightDp = (scrollPanelHeightDp - deltaDp).coerceIn(250f, 460f)
                                 },
                                 onBackToKeyboard = {
                                     onKeyFeedback()
+                                    isEmojiSearchMode = false
                                     panelMode = PanelMode.KEYBOARD
                                 },
                                 onToggleFavorite = onToggleFavorite,
@@ -379,53 +391,58 @@ fun KeyboardRoot(
                             )
                         } else {
                             Column(modifier = Modifier.fillMaxWidth()) {
-                                ToolbarRow(
-                                    panelMode = panelMode,
-                                    canResize = canResizePanel,
-                                    isExpanded = canResizePanel && scrollPanelHeightDp > 300f,
-                                    onResizeDeltaDp = { deltaDp ->
-                                        scrollPanelHeightDp = (scrollPanelHeightDp - deltaDp).coerceIn(250f, 460f)
-                                    },
-                                    onToggleExpand = {
-                                        scrollPanelHeightDp = if (scrollPanelHeightDp > 300f) 250f else 420f
-                                    },
-                                    onToggleEmoji = {
-                                        panelMode = PanelMode.EMOJI
-                                    },
-                                    onToggleClipboard = {
-                                        panelMode = if (panelMode == PanelMode.CLIPBOARD) PanelMode.KEYBOARD else PanelMode.CLIPBOARD
-                                    },
-                                    onToggleTodo = {
-                                        panelMode = if (panelMode == PanelMode.TODO) PanelMode.KEYBOARD else PanelMode.TODO
-                                    },
-                                    onOpenSettings = {
-                                        onKeyFeedback()
-                                        onOpenSettings()
-                                    },
-                                    suggestions = suggestions,
-                                    onSelectSuggestion = onSelectSuggestion,
-                                    onBlockSuggestion = onBlockSuggestion,
-                                    glideTypingEnabled = glideTypingEnabled,
-                                    glideCharByChar = glideCharByChar,
-                                    onToggleGlideMode = {
-                                        onKeyFeedback()
-                                        onToggleGlideMode()
-                                    },
-                                    voiceActive = panelMode == PanelMode.VOICE || voiceUiState.isListening,
-                                    onToggleVoice = {
-                                        onKeyFeedback()
-                                        if (panelMode == PanelMode.VOICE) {
-                                            onCancelVoiceTyping()
-                                            panelMode = PanelMode.KEYBOARD
-                                        } else {
-                                            onStartVoiceTyping()
-                                        }
-                                    },
-                                    onUndo = onUndo,
-                                    onRedo = onRedo,
-                                )
+                                if (isEmojiSearchMode && panelMode == PanelMode.KEYBOARD) {
+                                    EmojiSearchKeyboardHeader(
+                                        query = emojiSearchQuery,
+                                        recentEmojis = recentEmojis,
+                                        onClearQuery = {
+                                            onKeyFeedback()
+                                            emojiSearchQuery = ""
+                                        },
+                                        onBackToEmojiGrid = {
+                                            onKeyFeedback()
+                                            isEmojiSearchMode = false
+                                            panelMode = PanelMode.EMOJI
+                                        },
+                                        onSelectEmoji = { emoji ->
+                                            onKeyFeedback()
+                                            onRecordRecentEmoji(emoji)
+                                            onCommitText(emoji)
+                                        },
+                                    )
+                                } else {
+                                    ToolbarRow(
+                                        panelMode = panelMode,
+                                        canResize = canResizePanel,
+                                        isExpanded = canResizePanel && scrollPanelHeightDp > 300f,
+                                        onResizeDeltaDp = { deltaDp ->
+                                            scrollPanelHeightDp = (scrollPanelHeightDp - deltaDp).coerceIn(250f, 460f)
+                                        },
+                                        onToggleExpand = {
+                                            scrollPanelHeightDp = if (scrollPanelHeightDp > 300f) 250f else 420f
+                                        },
+                                        onToggleTodo = {
+                                            panelMode = if (panelMode == PanelMode.TODO) PanelMode.KEYBOARD else PanelMode.TODO
+                                        },
+                                        suggestions = suggestions,
+                                        onSelectSuggestion = onSelectSuggestion,
+                                        onBlockSuggestion = onBlockSuggestion,
+                                        voiceActive = panelMode == PanelMode.VOICE || voiceUiState.isListening,
+                                        onToggleVoice = {
+                                            onKeyFeedback()
+                                            if (panelMode == PanelMode.VOICE) {
+                                                onCancelVoiceTyping()
+                                                panelMode = PanelMode.KEYBOARD
+                                            } else {
+                                                onStartVoiceTyping()
+                                            }
+                                        },
+                                        onUndo = onUndo,
+                                        onRedo = onRedo,
+                                    )
+                                }
 
-                                if (inputContext == InputContext.TERMINAL && panelMode == PanelMode.KEYBOARD) {
+                                if (inputContext == InputContext.TERMINAL && panelMode == PanelMode.KEYBOARD && !isEmojiSearchMode) {
                                     TerminalQuickBar(
                                         ctrlActive = ctrlActive,
                                         onToggleCtrl = {
@@ -518,6 +535,7 @@ fun KeyboardRoot(
                             TouchKeyGrid(
                                 rows = rows,
                                 layoutId = activeLayoutId,
+                                languageLayoutId = layoutId,
                                 isAlphaLayer = layer == KeyboardLayer.ALPHA,
                                 rootWidthPx = rootWidthPx,
                                 shiftState = shiftState,
@@ -525,7 +543,7 @@ fun KeyboardRoot(
                                 longPressDelayMs = longPressDelayMs,
                                 rapidDeleteDelayMs = rapidDeleteDelayMs,
                                 deleteGesturesEnabled = deleteGesturesEnabled,
-                                returnAction = returnAction,
+                                returnAction = if (isEmojiSearchMode) ReturnAction.SEARCH else returnAction,
                                 accentPopup = accentPopup,
                                 assets = assets,
                                 onShowAccentPopup = {
@@ -541,7 +559,11 @@ fun KeyboardRoot(
                                 onKeyFeedback = onKeyFeedback,
                                 onKeyAction = { keyId, fromAccent ->
                                     if (fromAccent != null) {
-                                        onCommitText(fromAccent)
+                                        if (isEmojiSearchMode) {
+                                            emojiSearchQuery += fromAccent
+                                        } else {
+                                            onCommitText(fromAccent)
+                                        }
                                         shiftState = KeyboardStateLogic.shiftAfterCharacterCommit(shiftState)
                                         if (resetForwardDeleteOnChar) isForwardDeleteMode = false
                                         return@TouchKeyGrid
@@ -554,9 +576,18 @@ fun KeyboardRoot(
                                             lastShiftTapMs = if (shiftState == ShiftState.CAPS_LOCK) 0L else now
                                         }
                                         "BACKSPACE" -> {
-                                            if (isForwardDeleteMode) onForwardDelete() else onBackspace()
-                                            if (shiftState == ShiftState.OFF && shouldAutoCapNow()) {
-                                                shiftState = ShiftState.ONCE
+                                            if (isEmojiSearchMode) {
+                                                if (emojiSearchQuery.isNotEmpty()) {
+                                                    emojiSearchQuery = emojiSearchQuery.dropLast(1)
+                                                } else {
+                                                    isEmojiSearchMode = false
+                                                    panelMode = PanelMode.EMOJI
+                                                }
+                                            } else {
+                                                if (isForwardDeleteMode) onForwardDelete() else onBackspace()
+                                                if (shiftState == ShiftState.OFF && shouldAutoCapNow()) {
+                                                    shiftState = ShiftState.ONCE
+                                                }
                                             }
                                         }
                                         "SYMBOLS" -> {
@@ -572,22 +603,36 @@ fun KeyboardRoot(
                                             lastNonNumericLayer = KeyboardLayer.ALPHA
                                         }
                                         "NUMERIC" -> layer = KeyboardLayer.NUMERIC
-                                        "EMOJI_KEY" -> panelMode = PanelMode.EMOJI
+                                        "EMOJI_KEY" -> {
+                                            isEmojiSearchMode = false
+                                            panelMode = PanelMode.EMOJI
+                                        }
                                         "SPACE" -> {
-                                            onCommitText(" ")
-                                            if (resetForwardDeleteOnChar) isForwardDeleteMode = false
-                                            if (shiftState == ShiftState.OFF && shouldAutoCapNow()) {
-                                                shiftState = ShiftState.ONCE
+                                            if (isEmojiSearchMode) {
+                                                if (emojiSearchQuery.isNotEmpty() && !emojiSearchQuery.endsWith(" ")) {
+                                                    emojiSearchQuery += " "
+                                                }
+                                            } else {
+                                                onCommitText(" ")
+                                                if (resetForwardDeleteOnChar) isForwardDeleteMode = false
+                                                if (shiftState == ShiftState.OFF && shouldAutoCapNow()) {
+                                                    shiftState = ShiftState.ONCE
+                                                }
                                             }
                                         }
                                         "RETURN" -> {
-                                            onReturn()
-                                            if (shiftState == ShiftState.OFF && shouldAutoCapNow()) {
-                                                shiftState = ShiftState.ONCE
+                                            if (isEmojiSearchMode) {
+                                                isEmojiSearchMode = false
+                                                panelMode = PanelMode.EMOJI
+                                            } else {
+                                                onReturn()
+                                                if (shiftState == ShiftState.OFF && shouldAutoCapNow()) {
+                                                    shiftState = ShiftState.ONCE
+                                                }
                                             }
                                         }
                                         else -> {
-                                            if (ctrlActive && keyId.length == 1 && keyId[0].isLetter()) {
+                                            if (!isEmojiSearchMode && ctrlActive && keyId.length == 1 && keyId[0].isLetter()) {
                                                 onSendCtrlKey(keyId[0])
                                                 ctrlActive = false
                                                 return@TouchKeyGrid
@@ -597,20 +642,38 @@ fun KeyboardRoot(
                                                 shiftState = shiftState,
                                                 returnAction = returnAction,
                                             )
-                                            onCommitText(output)
+                                            if (isEmojiSearchMode) {
+                                                emojiSearchQuery += output
+                                            } else {
+                                                onCommitText(output)
+                                            }
                                             shiftState = KeyboardStateLogic.shiftAfterCharacterCommit(shiftState)
                                             if (resetForwardDeleteOnChar) isForwardDeleteMode = false
                                         }
                                     }
                                 },
                                 onBackspaceRepeat = {
-                                    if (isForwardDeleteMode) onForwardDelete() else onBackspace()
+                                    if (isEmojiSearchMode) {
+                                        if (emojiSearchQuery.isNotEmpty()) {
+                                            emojiSearchQuery = emojiSearchQuery.dropLast(1)
+                                        }
+                                    } else {
+                                        if (isForwardDeleteMode) onForwardDelete() else onBackspace()
+                                    }
                                 },
                                 onDeleteWord = {
-                                    onDeleteWord(isForwardDeleteMode)
+                                    if (isEmojiSearchMode) {
+                                        emojiSearchQuery = emojiSearchQuery.trimEnd().substringBeforeLast(' ', "")
+                                    } else {
+                                        onDeleteWord(isForwardDeleteMode)
+                                    }
                                 },
                                 onDeleteParagraph = {
-                                    onDeleteParagraph(isForwardDeleteMode)
+                                    if (isEmojiSearchMode) {
+                                        emojiSearchQuery = ""
+                                    } else {
+                                        onDeleteParagraph(isForwardDeleteMode)
+                                    }
                                 },
                                 onToggleNumericMode = {
                                     layer = if (layer == KeyboardLayer.NUMERIC) {
@@ -626,10 +689,25 @@ fun KeyboardRoot(
                                 onToggleLayout = onToggleLayout,
                                 glideTypingEnabled = glideTypingEnabled,
                                 glideCharByChar = glideCharByChar,
+                                onToggleGlideMode = {
+                                    onToggleGlideMode()
+                                },
                                 onSwipeWord = { keyCenters, trailPoints, appendTrailingSpace ->
-                                    onSwipeWord(keyCenters, trailPoints, appendTrailingSpace)
-                                    shiftState = KeyboardStateLogic.shiftAfterCharacterCommit(shiftState)
-                                    if (resetForwardDeleteOnChar) isForwardDeleteMode = false
+                                    if (isEmojiSearchMode) {
+                                        val startCh = trailPoints.firstOrNull()?.let { pt ->
+                                            keyCenters.minByOrNull { hypot(it.x - pt.x, it.y - pt.y) }?.ch
+                                        }.orEmpty()
+                                        val endCh = trailPoints.lastOrNull()?.let { pt ->
+                                            keyCenters.minByOrNull { hypot(it.x - pt.x, it.y - pt.y) }?.ch
+                                        }.orEmpty()
+                                        if (startCh.isNotEmpty()) {
+                                            emojiSearchQuery += startCh + endCh
+                                        }
+                                    } else {
+                                        onSwipeWord(keyCenters, trailPoints, appendTrailingSpace)
+                                        shiftState = KeyboardStateLogic.shiftAfterCharacterCommit(shiftState)
+                                        if (resetForwardDeleteOnChar) isForwardDeleteMode = false
+                                    }
                                 },
                             )
                         }
@@ -830,6 +908,122 @@ fun KeyboardRoot(
     }
 }
 
+@Composable
+private fun EmojiSearchKeyboardHeader(
+    query: String,
+    recentEmojis: List<String>,
+    onClearQuery: () -> Unit,
+    onBackToEmojiGrid: () -> Unit,
+    onSelectEmoji: (String) -> Unit,
+) {
+    val matchingEmojis = remember(query, recentEmojis) {
+        if (query.isBlank()) {
+            recentEmojis.ifEmpty { listOf("😂", "❤️", "👍", "🔥", "🙏", "😍", "🥳", "✅", "🇨🇮", "✨") }
+        } else {
+            SuggestionEngine.searchEmojisBilingual(query)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(34.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(ActionKeyBgColor)
+                    .clickable(onClick = onBackToEmojiGrid),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "Back to Emoji Grid",
+                    tint = ToolbarTextColor,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(32.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(ActionKeyBgColor)
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = if (query.isEmpty()) {
+                        "🔍 Type on keyboard to search emojis…"
+                    } else {
+                        "🔍 $query|"
+                    },
+                    color = if (query.isEmpty()) HintTextColor else Color.White,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (query.isNotEmpty()) {
+                    Text(
+                        text = "Clear",
+                        color = ReturnBgColor,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(onClick = onClearQuery)
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp)
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            if (matchingEmojis.isEmpty()) {
+                Text(
+                    text = "No matching emojis for \"$query\"",
+                    color = HintTextColor,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
+            } else {
+                matchingEmojis.take(28).forEach { emoji ->
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onSelectEmoji(emoji) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = emoji,
+                            fontSize = 26.sp,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ToolbarRow(
@@ -839,17 +1033,11 @@ private fun ToolbarRow(
     suggestions: List<SuggestionCandidate>,
     onSelectSuggestion: (SuggestionCandidate) -> Unit,
     onBlockSuggestion: (String) -> Unit,
-    glideTypingEnabled: Boolean,
-    glideCharByChar: Boolean,
-    onToggleGlideMode: () -> Unit,
     voiceActive: Boolean,
     onToggleVoice: () -> Unit,
     onResizeDeltaDp: (Float) -> Unit,
     onToggleExpand: () -> Unit,
-    onToggleEmoji: () -> Unit,
-    onToggleClipboard: () -> Unit,
     onToggleTodo: () -> Unit,
-    onOpenSettings: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
 ) {
@@ -863,7 +1051,26 @@ private fun ToolbarRow(
         }
     }
 
-    val isSuggestionMode = panelMode == PanelMode.KEYBOARD && suggestions.isNotEmpty() && !showToolsOverride
+    val hasSuggestions = panelMode == PanelMode.KEYBOARD && suggestions.isNotEmpty()
+    val isSuggestionMode = hasSuggestions && !showToolsOverride
+
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (isSuggestionMode) 0f else 180f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "toolbarArrowRotation",
+    )
+
+    val resizeArrowRotation by animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "resizeArrowRotation",
+    )
 
     Box(
         modifier = Modifier
@@ -900,146 +1107,134 @@ private fun ToolbarRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            if (isSuggestionMode) {
-                // Suggestion Strip view
-                ToolbarIconButton(
-                    icon = Icons.AutoMirrored.Outlined.ArrowForward,
-                    contentDescription = "Show Tools",
-                    active = false,
-                    onClick = { showToolsOverride = true },
-                )
-
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(36.dp)
-                        .padding(horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                ) {
-                    val displayCandidates = suggestions.take(3)
-                    displayCandidates.forEachIndexed { idx, candidate ->
-                        if (idx > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .height(14.dp)
-                                    .background(HintTextColor.copy(alpha = 0.25f)),
-                            )
-                        }
-                        val isCenter = when {
-                            displayCandidates.size >= 3 -> idx == 1
-                            displayCandidates.size == 2 && displayCandidates[0].isLiteral -> idx == 1
-                            else -> idx == 0
-                        }
-                        Box(
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (hasSuggestions) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .clickable { showToolsOverride = !showToolsOverride },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+                            contentDescription = if (isSuggestionMode) "Show Tools" else "Show Suggestions",
+                            tint = ToolbarTextColor,
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(10.dp))
-                                .then(
-                                    if (isCenter) {
-                                        Modifier.background(ReturnBgColor.copy(alpha = 0.16f))
-                                    } else {
-                                        Modifier
-                                    },
-                                )
-                                .combinedClickable(
-                                    onClick = { onSelectSuggestion(candidate) },
-                                    onLongClick = {
-                                        if (!candidate.isLiteral) {
-                                            onBlockSuggestion(candidate.word)
-                                        }
-                                    },
-                                )
-                                .padding(horizontal = 4.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = if (candidate.isLiteral) "“${candidate.word}”" else candidate.word,
-                                color = if (isCenter) ReturnBgColor else Color(0xFFE3E3E3),
-                                fontSize = if (isCenter) 15.sp else 14.sp,
-                                fontWeight = if (isCenter) FontWeight.SemiBold else FontWeight.Normal,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
+                                .size(20.dp)
+                                .graphicsLayer {
+                                    rotationZ = arrowRotation
+                                },
+                        )
                     }
                 }
-            } else {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    if (panelMode == PanelMode.KEYBOARD && suggestions.isNotEmpty()) {
-                        ToolbarIconButton(
-                            icon = Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = "Show Suggestions",
-                            active = false,
-                            onClick = { showToolsOverride = false },
-                        )
-                    }
-                    ToolbarIconButton(
-                        icon = if (panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI) {
-                            Icons.Outlined.Keyboard
-                        } else {
-                            Icons.Outlined.EmojiEmotions
-                        },
-                        contentDescription = "Emoji",
-                        active = panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI,
-                        onClick = onToggleEmoji,
-                    )
-                    ToolbarIconButton(
-                        icon = if (panelMode == PanelMode.CLIPBOARD) {
-                            Icons.Outlined.Keyboard
-                        } else {
-                            Icons.Outlined.ContentPaste
-                        },
-                        contentDescription = "Clipboard",
-                        active = panelMode == PanelMode.CLIPBOARD,
-                        onClick = onToggleClipboard,
-                    )
-                    ToolbarIconButton(
-                        icon = if (panelMode == PanelMode.TODO) {
-                            Icons.Outlined.Keyboard
-                        } else {
-                            Icons.Outlined.Checklist
-                        },
-                        contentDescription = "Todo List",
-                        active = panelMode == PanelMode.TODO,
-                        onClick = onToggleTodo,
-                    )
-                    if (canResize) {
-                        ToolbarIconButton(
-                            icon = if (isExpanded) Icons.Outlined.KeyboardArrowDown else Icons.Outlined.KeyboardArrowUp,
-                            contentDescription = "Resize",
-                            active = isExpanded,
-                            onClick = onToggleExpand,
-                        )
-                    }
-                    ToolbarIconButton(
-                        icon = Icons.Outlined.Settings,
-                        contentDescription = "Settings",
-                        active = false,
-                        onClick = onOpenSettings,
-                    )
-                    if (glideTypingEnabled && panelMode == PanelMode.KEYBOARD) {
-                        Box(
+
+                AnimatedContent(
+                    targetState = isSuggestionMode,
+                    transitionSpec = {
+                        (fadeIn(tween(150)) + slideInHorizontally(tween(170)) { if (targetState) it / 5 else -it / 5 })
+                            .togetherWith(fadeOut(tween(110)))
+                    },
+                    modifier = Modifier.weight(1f),
+                    label = "toolbarModeContent",
+                ) { suggestionView ->
+                    if (suggestionView) {
+                        Row(
                             modifier = Modifier
-                                .height(28.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(if (glideCharByChar) ReturnBgColor else ActionKeyBgColor)
-                                .clickable(onClick = onToggleGlideMode)
-                                .padding(horizontal = 9.dp),
-                            contentAlignment = Alignment.Center,
+                                .fillMaxWidth()
+                                .height(36.dp)
+                                .padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceEvenly,
                         ) {
-                            Text(
-                                text = if (glideCharByChar) "Glide: Char" else "Glide: Word",
-                                color = if (glideCharByChar) ReturnFgColor else ToolbarTextColor,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
+                            val displayCandidates = suggestions.take(3)
+                            displayCandidates.forEachIndexed { idx, candidate ->
+                                if (idx > 0) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(1.dp)
+                                            .height(14.dp)
+                                            .background(HintTextColor.copy(alpha = 0.25f)),
+                                    )
+                                }
+                                val isCenter = when {
+                                    displayCandidates.size >= 3 -> idx == 1
+                                    displayCandidates.size == 2 && displayCandidates[0].isLiteral -> idx == 1
+                                    else -> idx == 0
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .then(
+                                            if (isCenter) {
+                                                Modifier.background(ReturnBgColor.copy(alpha = 0.16f))
+                                            } else {
+                                                Modifier
+                                            },
+                                        )
+                                        .combinedClickable(
+                                            onClick = { onSelectSuggestion(candidate) },
+                                            onLongClick = {
+                                                if (!candidate.isLiteral) {
+                                                    onBlockSuggestion(candidate.word)
+                                                }
+                                            },
+                                        )
+                                        .padding(horizontal = 4.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = if (candidate.isLiteral) "“${candidate.word}”" else candidate.word,
+                                        color = if (isCenter) ReturnBgColor else Color(0xFFE3E3E3),
+                                        fontSize = if (isCenter) 15.sp else 14.sp,
+                                        fontWeight = if (isCenter) FontWeight.SemiBold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            ToolbarIconButton(
+                                icon = if (panelMode == PanelMode.TODO) {
+                                    Icons.Outlined.Keyboard
+                                } else {
+                                    Icons.Outlined.Checklist
+                                },
+                                contentDescription = "Todo List",
+                                active = panelMode == PanelMode.TODO,
+                                onClick = onToggleTodo,
                             )
+                            if (canResize) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isExpanded) ReturnBgColor.copy(alpha = 0.2f) else Color.Transparent)
+                                        .clickable(onClick = onToggleExpand),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.KeyboardArrowUp,
+                                        contentDescription = "Resize",
+                                        tint = if (isExpanded) ReturnBgColor else ToolbarTextColor,
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .graphicsLayer {
+                                                rotationZ = resizeArrowRotation
+                                            },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1193,6 +1388,7 @@ private fun TerminalQuickBar(
 private fun TouchKeyGrid(
     rows: List<List<String>>,
     layoutId: String,
+    languageLayoutId: String,
     isAlphaLayer: Boolean,
     rootWidthPx: Float,
     shiftState: ShiftState,
@@ -1217,6 +1413,7 @@ private fun TouchKeyGrid(
     onToggleLayout: () -> Unit,
     glideTypingEnabled: Boolean,
     glideCharByChar: Boolean,
+    onToggleGlideMode: () -> Unit,
     onSwipeWord: (List<KeyCenterPoint>, List<SwipeTrailPoint>, Boolean) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -1238,9 +1435,20 @@ private fun TouchKeyGrid(
     var activeGlidedKey by remember(rows) { mutableStateOf<String?>(null) }
     var spaceGlideOffsetPx by remember(rows) { mutableStateOf(0f) }
     var spaceGlideOffsetY by remember(rows) { mutableStateOf(0f) }
+    var backspaceSpecialMode by remember(rows) { mutableStateOf<String?>(null) }
+    var specialActionHudText by remember(rows) { mutableStateOf<String?>(null) }
+    var specialActionSeq by remember(rows) { mutableStateOf(0) }
     var trailClockMs by remember { mutableStateOf(0L) }
     var activeSwipePointerId by remember(rows) { mutableStateOf<PointerId?>(null) }
     var gridCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+
+    LaunchedEffect(specialActionSeq) {
+        if (specialActionSeq > 0) {
+            delay(560L)
+            backspaceSpecialMode = null
+            specialActionHudText = null
+        }
+    }
 
     // Continuous 60fps comet-trail decay & soft button-glide glow decay loop
     LaunchedEffect(visualTrail.isNotEmpty(), glidedKeyTimestamps.isNotEmpty(), activeGlidedKey) {
@@ -1260,12 +1468,14 @@ private fun TouchKeyGrid(
     val latestPopup by rememberUpdatedState(accentPopup)
     val latestIsAlphaLayer by rememberUpdatedState(isAlphaLayer)
     val latestLayoutId by rememberUpdatedState(layoutId)
+    val latestLanguageLayoutId by rememberUpdatedState(languageLayoutId)
     val latestRootWidthPx by rememberUpdatedState(rootWidthPx)
     val latestLongPressDelayMs by rememberUpdatedState(longPressDelayMs)
     val latestRapidDeleteDelayMs by rememberUpdatedState(rapidDeleteDelayMs)
     val latestDeleteGesturesEnabled by rememberUpdatedState(deleteGesturesEnabled)
     val latestGlideTypingEnabled by rememberUpdatedState(glideTypingEnabled)
     val latestGlideCharByChar by rememberUpdatedState(glideCharByChar)
+    val latestOnToggleGlideMode by rememberUpdatedState(onToggleGlideMode)
     val latestOnSwipeWord by rememberUpdatedState(onSwipeWord)
     val latestOnShowAccentPopup by rememberUpdatedState(onShowAccentPopup)
     val latestOnShowKeyPreview by rememberUpdatedState(onShowKeyPreview)
@@ -1332,9 +1542,9 @@ private fun TouchKeyGrid(
                                         }
                                     }
                                     "SPACE" -> {
-                                        // Hold Spacebar without gliding -> toggle French AZERTY <-> English QWERTY
+                                        // Hold Spacebar for 1s without gliding -> toggle French AZERTY <-> English QWERTY
                                         pointer.longPressJob = scope.launch {
-                                            delay(latestLongPressDelayMs + 70L)
+                                            delay(1000L)
                                             if (!pointer.isGliding) {
                                                 pointer.deleteGestureTriggered = true
                                                 glidedKeyTimestamps["SPACE"] = android.os.SystemClock.uptimeMillis()
@@ -1364,13 +1574,13 @@ private fun TouchKeyGrid(
                                         }
                                         pointer.longPressJob = scope.launch {
                                             delay(latestLongPressDelayMs)
-                                            val baseChar = if (latestShift != ShiftState.OFF) {
-                                                hitKey.uppercase()
-                                            } else {
-                                                hitKey
-                                            }
+                                            val baseChar = KeyboardStateLogic.resolveKeyLabel(
+                                                rawKey = hitKey,
+                                                shiftState = latestShift,
+                                                returnAction = returnAction,
+                                            )
                                             val hint = if (latestIsAlphaLayer) {
-                                                KeyboardStateLogic.hintForKey(latestLayoutId, hitKey)
+                                                KeyboardStateLogic.hintForKey(latestLanguageLayoutId, hitKey)
                                             } else {
                                                 null
                                             }
@@ -1449,6 +1659,23 @@ private fun TouchKeyGrid(
                                             pointer.lastGlideY += stepsY * glideVerticalStepPx
                                         }
                                     }
+                                } else if (pointer.keyId == "SHIFT") {
+                                    // Glide Up on SHIFT -> Toggle Char-by-Char Glide vs Word Glide Mode
+                                    if (!pointer.deleteGestureTriggered && totalDy < -deleteSwipeThresholdPx && abs(totalDy) > abs(totalDx)) {
+                                        pointer.deleteGestureTriggered = true
+                                        pointer.isGliding = true
+                                        pointer.longPressJob?.cancel()
+                                        activeGlidedKey = "SHIFT"
+                                        glidedKeyTimestamps["SHIFT"] = android.os.SystemClock.uptimeMillis()
+                                        specialActionHudText = if (!latestGlideCharByChar) {
+                                            "⇧ Glide Mode: Char-by-Char"
+                                        } else {
+                                            "⇧ Glide Mode: Word & Sentence"
+                                        }
+                                        specialActionSeq++
+                                        latestOnKeyFeedback()
+                                        latestOnToggleGlideMode()
+                                    }
                                 } else if (pointer.keyId == "BACKSPACE" && latestDeleteGesturesEnabled) {
                                     if (abs(totalDx) > glideThresholdPx || abs(totalDy) > glideThresholdPx) {
                                         activeGlidedKey = "BACKSPACE"
@@ -1464,25 +1691,34 @@ private fun TouchKeyGrid(
                                                 latestOnKeyFeedback()
                                                 latestOnToggleForwardDelete()
                                             }
-                                            // Glide up -> delete one paragraph at once
+                                            // Glide up -> delete one paragraph at once (Special UI/UX feedback!)
                                             totalDy < -deleteSwipeThresholdPx && abs(totalDy) > abs(totalDx) -> {
                                                 pointer.deleteGestureTriggered = true
                                                 pointer.isGliding = true
                                                 pointer.repeatJob?.cancel()
+                                                backspaceSpecialMode = "LINE"
+                                                specialActionHudText = "⌫ Line Cleared"
+                                                specialActionSeq++
                                                 latestOnKeyFeedback()
                                                 latestOnDeleteParagraph()
                                             }
-                                            // Glide left -> word delete mode
+                                            // Glide left -> word delete mode (Special UI/UX feedback!)
                                             totalDx < -deleteSwipeThresholdPx && abs(totalDx) >= abs(totalDy) -> {
                                                 pointer.deleteGestureTriggered = true
                                                 pointer.isGliding = true
                                                 pointer.lastGlideX = localPos.x
                                                 pointer.repeatJob?.cancel()
+                                                backspaceSpecialMode = "WORD"
+                                                specialActionHudText = "⌫ Word Deleted"
+                                                specialActionSeq++
                                                 latestOnKeyFeedback()
                                                 latestOnDeleteWord()
                                                 pointer.repeatJob = scope.launch {
                                                     delay(280L)
                                                     while (true) {
+                                                        backspaceSpecialMode = "WORD"
+                                                        specialActionHudText = "⌫ Word Deleted"
+                                                        specialActionSeq++
                                                         latestOnDeleteWord()
                                                         delay(140L)
                                                     }
@@ -1492,6 +1728,9 @@ private fun TouchKeyGrid(
                                     } else if (pointer.isGliding && totalDx < -deleteSwipeThresholdPx) {
                                         val stepDx = pointer.lastGlideX - localPos.x
                                         if (stepDx >= wordSwipeStepPx) {
+                                            backspaceSpecialMode = "WORD"
+                                            specialActionHudText = "⌫ Word Deleted"
+                                            specialActionSeq++
                                             latestOnDeleteWord()
                                             pointer.lastGlideX = localPos.x
                                         }
@@ -1552,7 +1791,7 @@ private fun TouchKeyGrid(
                                             }
 
                                             if (latestGlideCharByChar) {
-                                                // Char-by-Char Word & Sentence Glide Mode: dwell on any letter, SPACE, or BACKSPACE
+                                                // Char-by-Char Word & Sentence Glide Mode: dwell on any letter, SPACE, or BACKSPACE (longer 260ms delay so sliding past keys won't misfire)
                                                 if (hoverKey != null && hoverKey != pointer.lastCharGlideKey) {
                                                     pointer.lastCharGlideKey = hoverKey
                                                     pointer.charDwellJob?.cancel()
@@ -1561,13 +1800,13 @@ private fun TouchKeyGrid(
                                                         hoverKey == "BACKSPACE"
                                                     if (isAllowedCharKey) {
                                                         pointer.charDwellJob = scope.launch {
-                                                            delay(95L)
+                                                            delay(260L)
                                                             val t1 = android.os.SystemClock.uptimeMillis()
                                                             glidedKeyTimestamps[hoverKey] = t1
                                                             latestOnKeyFeedback()
                                                             latestOnKeyAction(hoverKey, null)
-                                                            // Hold slightly longer on the same key to repeat (e.g. double letter "ll" or second space)
-                                                            delay(330L)
+                                                            // Hold longer on the same key to repeat (e.g. double letter "ll" or second space)
+                                                            delay(520L)
                                                             val t2 = android.os.SystemClock.uptimeMillis()
                                                             glidedKeyTimestamps[hoverKey] = t2
                                                             latestOnKeyFeedback()
@@ -1602,9 +1841,9 @@ private fun TouchKeyGrid(
                                                         pointer.lastCharGlideKey = hoverKey
                                                         pointer.charDwellJob?.cancel()
                                                         if (hoverKey.length == 1 && hoverKey[0].isLetter()) {
-                                                            // Hybrid dwell-to-commit: pausing stationary on a key for 330ms commits that char directly
+                                                            // Hybrid dwell-to-commit: pausing stationary on a key for 480ms commits that char directly
                                                             pointer.charDwellJob = scope.launch {
-                                                                delay(330L)
+                                                                delay(480L)
                                                                 pointer.charDwellCommitted = true
                                                                 wordSwipePoints.clear()
                                                                 glidedKeyTimestamps[hoverKey] = android.os.SystemClock.uptimeMillis()
@@ -1729,8 +1968,11 @@ private fun TouchKeyGrid(
                         val isShiftActive = keyId == "SHIFT" && shiftState != ShiftState.OFF
                         val isForwardDeleteKey = keyId == "BACKSPACE" && isForwardDeleteMode
                         val isSpaceGliding = keyId == "SPACE" && activePointers.values.any { it.keyId == "SPACE" && it.isGliding }
+                        val activeBackspaceSpecial = if (keyId == "BACKSPACE") backspaceSpecialMode else null
 
                         val bg = when {
+                            activeBackspaceSpecial == "LINE" -> Color(0xFFDC2626)
+                            activeBackspaceSpecial == "WORD" -> Color(0xFFEA580C)
                             isReturn -> ReturnBgColor
                             isShiftActive || isForwardDeleteKey -> KeyPressedColor
                             isPressed -> KeyPressedColor
@@ -1739,6 +1981,7 @@ private fun TouchKeyGrid(
                             else -> KeyBgColor
                         }
                         val fg = when {
+                            activeBackspaceSpecial != null -> Color.White
                             isReturn -> ReturnFgColor
                             isForwardDeleteKey -> ReturnBgColor
                             else -> Color.White
@@ -1749,11 +1992,12 @@ private fun TouchKeyGrid(
                             else -> RoundedCornerShape(8.dp)
                         }
                         val hint = when {
+                            keyId == "SHIFT" && glideTypingEnabled && isAlphaLayer -> if (glideCharByChar) "Char" else "Word"
                             rowIndex == 3 && keyId == "SYMBOLS" -> "123"
                             rowIndex == 3 && keyId == "NUMERIC" -> "?#"
                             rowIndex == 3 && keyId == "ALPHA" && layoutId == "numeric" -> "?#"
                             rowIndex == 3 && keyId == "ALPHA" && !isAlphaLayer -> "123"
-                            isAlphaLayer -> KeyboardStateLogic.hintForKey(layoutId, keyId)
+                            isAlphaLayer -> KeyboardStateLogic.hintForKey(languageLayoutId, keyId)
                             else -> null
                         }
                         val lastGlidedAt = glidedKeyTimestamps[keyId]
@@ -1761,7 +2005,11 @@ private fun TouchKeyGrid(
                             (lastGlidedAt != null && (trailClockMs - lastGlidedAt) in 0..220)
 
                         val keyLabel = if (keyId == "SPACE") {
-                            if (layoutId.contains("fr") || layoutId.contains("ci")) "Français • AZERTY" else "English • QWERTY"
+                            if (languageLayoutId.contains("fr") || languageLayoutId.contains("ci")) {
+                                "Français • AZERTY"
+                            } else {
+                                "English • QWERTY"
+                            }
                         } else {
                             KeyboardStateLogic.resolveKeyLabel(keyId, shiftState, returnAction)
                         }
@@ -1771,6 +2019,7 @@ private fun TouchKeyGrid(
                             label = keyLabel,
                             shiftState = shiftState,
                             isForwardDeleteKey = isForwardDeleteKey,
+                            backspaceSpecialMode = activeBackspaceSpecial,
                             isPressed = isPressed,
                             isGlidedOver = isKeyGlided,
                             isSpaceGliding = isSpaceGliding,
@@ -1853,6 +2102,38 @@ private fun TouchKeyGrid(
                 }
             }
         }
+
+        AnimatedVisibility(
+            visible = specialActionHudText != null,
+            enter = scaleIn(
+                initialScale = 0.8f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+            ) + fadeIn(tween(80)),
+            exit = scaleOut(targetScale = 0.85f, animationSpec = tween(100)) + fadeOut(tween(100)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 2.dp),
+        ) {
+            val badgeBg = when (backspaceSpecialMode) {
+                "LINE" -> Color(0xFFDC2626)
+                "WORD" -> Color(0xFFEA580C)
+                else -> ReturnBgColor
+            }
+            val badgeFg = if (backspaceSpecialMode != null) Color.White else ReturnFgColor
+            Surface(
+                color = badgeBg,
+                shape = RoundedCornerShape(50),
+                shadowElevation = 4.dp,
+            ) {
+                Text(
+                    text = specialActionHudText.orEmpty(),
+                    color = badgeFg,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp),
+                )
+            }
+        }
     }
 }
 
@@ -1865,6 +2146,7 @@ private fun RowScope.KeyCap(
     label: String,
     shiftState: ShiftState,
     isForwardDeleteKey: Boolean,
+    backspaceSpecialMode: String? = null,
     isPressed: Boolean,
     isGlidedOver: Boolean,
     isSpaceGliding: Boolean,
@@ -1886,6 +2168,7 @@ private fun RowScope.KeyCap(
     )
     val keyScale by animateFloatAsState(
         targetValue = when {
+            backspaceSpecialMode != null -> 1.09f
             isPressed -> 0.93f
             isSpaceGliding -> 1.03f
             isGlidedOver -> 1.045f
@@ -1909,6 +2192,16 @@ private fun RowScope.KeyCap(
             stiffness = Spring.StiffnessMedium,
         ),
         label = "backspaceFlip",
+    )
+    val backspaceShiftX by animateFloatAsState(
+        targetValue = if (backspaceSpecialMode == "WORD") -7f else 0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "backspaceShiftX",
+    )
+    val backspaceShiftY by animateFloatAsState(
+        targetValue = if (backspaceSpecialMode == "LINE") -7f else 0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "backspaceShiftY",
     )
     val animatedSpaceShiftPx by animateFloatAsState(
         targetValue = if (isSpaceGliding) spaceGlideOffsetPx.coerceIn(-44f, 44f) else 0f,
@@ -1937,6 +2230,9 @@ private fun RowScope.KeyCap(
                 if (keyId == "SPACE" && isSpaceGliding) {
                     translationX = animatedSpaceShiftPx * 0.14f
                     translationY = animatedSpaceShiftY * 0.35f
+                } else if (keyId == "BACKSPACE") {
+                    translationX = backspaceShiftX
+                    translationY = backspaceShiftY
                 }
             }
             .onGloballyPositioned(onBoundsChanged)
@@ -1957,8 +2253,9 @@ private fun RowScope.KeyCap(
         if (hint != null) {
             Text(
                 text = hint,
-                color = HintTextColor,
+                color = if (keyId == "SHIFT" && hint == "Char") ReturnBgColor else HintTextColor,
                 fontSize = 10.sp,
+                fontWeight = if (keyId == "SHIFT" && hint == "Char") FontWeight.Bold else FontWeight.Normal,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(top = 3.dp, end = 5.dp),
@@ -1975,17 +2272,46 @@ private fun RowScope.KeyCap(
                 )
             }
             keyId == "BACKSPACE" -> {
-                Icon(
-                    imageVector = icon ?: Icons.AutoMirrored.Outlined.Backspace,
-                    contentDescription = label,
-                    tint = foregroundColor,
-                    modifier = Modifier
-                        .size(22.dp)
-                        .align(Alignment.Center)
-                        .graphicsLayer {
-                            rotationY = backspaceFlip
-                        },
-                )
+                AnimatedContent(
+                    targetState = backspaceSpecialMode,
+                    transitionSpec = {
+                        (scaleIn(initialScale = 0.7f, animationSpec = tween(90)) + fadeIn(tween(90)))
+                            .togetherWith(scaleOut(targetScale = 0.7f, animationSpec = tween(70)) + fadeOut(tween(70)))
+                    },
+                    modifier = Modifier.align(Alignment.Center),
+                    label = "backspaceSpecialContent",
+                ) { special ->
+                    when (special) {
+                        "LINE" -> {
+                            Text(
+                                text = "▲ Line",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        "WORD" -> {
+                            Text(
+                                text = "« Word",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        else -> {
+                            Icon(
+                                imageVector = icon ?: Icons.AutoMirrored.Outlined.Backspace,
+                                contentDescription = label,
+                                tint = foregroundColor,
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .graphicsLayer {
+                                        rotationY = backspaceFlip
+                                    },
+                            )
+                        }
+                    }
+                }
             }
             keyId == "RETURN" -> {
                 AnimatedContent(
@@ -2026,57 +2352,18 @@ private fun RowScope.KeyCap(
                 ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(0.75f)
-                            .height(3.dp)
-                            .background(ReturnBgColor.copy(alpha = 0.25f), RoundedCornerShape(50)),
-                    )
-                    Box(
-                        modifier = Modifier
-                            .width(3.dp)
-                            .fillMaxHeight(0.62f)
-                            .background(ReturnBgColor.copy(alpha = 0.22f), RoundedCornerShape(50)),
-                    )
-                    Column(
-                        modifier = Modifier.graphicsLayer {
-                            translationX = animatedSpaceShiftPx
-                            translationY = animatedSpaceShiftY
-                        },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
+                            .graphicsLayer {
+                                translationX = animatedSpaceShiftPx
+                                translationY = animatedSpaceShiftY
+                            }
+                            .size(20.dp)
+                            .background(ReturnBgColor.copy(alpha = 0.25f), CircleShape),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = "▲",
-                            color = ReturnBgColor.copy(alpha = if (animatedSpaceShiftY < -2f) 1f else 0.55f),
-                            fontSize = 8.sp,
-                            lineHeight = 8.sp,
-                        )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                text = "«",
-                                color = ReturnBgColor,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(width = 28.dp, height = 6.dp)
-                                    .background(ReturnBgColor, RoundedCornerShape(50)),
-                            )
-                            Text(
-                                text = "»",
-                                color = ReturnBgColor,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        Text(
-                            text = "▼",
-                            color = ReturnBgColor.copy(alpha = if (animatedSpaceShiftY > 2f) 1f else 0.55f),
-                            fontSize = 8.sp,
-                            lineHeight = 8.sp,
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .background(ReturnBgColor, CircleShape),
                         )
                     }
                 }
