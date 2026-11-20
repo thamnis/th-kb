@@ -108,6 +108,7 @@ class VoiceInputManager(
 
     fun startListening(languageTag: String, useUnboundDefault: Boolean = false) {
         mainHandler.post {
+            mainHandler.removeCallbacksAndMessages(null)
             userRequestedStop = false
             lastVoiceActivityMs = SystemClock.uptimeMillis()
             accumulatedSessionWords = ""
@@ -153,11 +154,8 @@ class VoiceInputManager(
         }.getOrNull()
 
         if (sr == null) {
-            // Start Rust-backed direct PCM microphone monitor + launch system voice dialog if available
+            // Keep voice typing strictly inside th-kb (never launch external Google Voice dialog)
             startDirectPcmMonitor(languageTag)
-            if (VoicePermissionBridge.canLaunchSystemVoiceRecognizer(appContext)) {
-                VoicePermissionBridge.launchSystemVoiceRecognizer(appContext, languageTag)
-            }
             return
         }
 
@@ -202,32 +200,33 @@ class VoiceInputManager(
                 if (!sessionActive) return
                 sessionActive = false
 
-                val isServiceBindError = error == SpeechRecognizer.ERROR_CLIENT ||
-                    error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED ||
+                val isServiceBindError = error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED ||
                     error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ||
                     error == 12 || error == 13
 
                 if (isServiceBindError && !triedDefaultFallback && preferredComponent != null) {
                     triedDefaultFallback = true
-                    startListeningOnMain(languageTag, useUnboundDefault = true, isContinuation = isContinuation)
+                    mainHandler.postDelayed({
+                        if (!userRequestedStop) {
+                            startListeningOnMain(languageTag, useUnboundDefault = true, isContinuation = isContinuation)
+                        }
+                    }, 240L)
                     return
                 }
 
-                if (isServiceBindError && VoicePermissionBridge.canLaunchSystemVoiceRecognizer(appContext)) {
-                    stopInternalOnMain(keepPanelOpen = false, resetError = true)
-                    VoicePermissionBridge.launchSystemVoiceRecognizer(appContext, languageTag)
-                    return
-                }
-
-                val isSilenceOrNoMatch = error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
-                    error == SpeechRecognizer.ERROR_NO_MATCH
+                // Recover in-place inside th-kb without ever launching external Google Voice Typing popup
+                val isRecoverableInKb = error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
+                    error == SpeechRecognizer.ERROR_NO_MATCH ||
+                    error == SpeechRecognizer.ERROR_CLIENT ||
+                    error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY
                 val elapsedSilence = SystemClock.uptimeMillis() - lastVoiceActivityMs
-                if (isSilenceOrNoMatch && !userRequestedStop && elapsedSilence < VOICE_MAX_SILENCE_WAIT_MS) {
+                if (isRecoverableInKb && !userRequestedStop && elapsedSilence < VOICE_MAX_SILENCE_WAIT_MS) {
+                    mainHandler.removeCallbacksAndMessages(null)
                     mainHandler.postDelayed({
                         if (!userRequestedStop) {
                             startListeningOnMain(languageTag, useUnboundDefault, isContinuation = true)
                         }
-                    }, 120L)
+                    }, 280L)
                     return
                 }
 
@@ -236,10 +235,11 @@ class VoiceInputManager(
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission required."
                     SpeechRecognizer.ERROR_NETWORK,
                     SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
-                    -> "Offline voice pack needed. Tap System Voice ↗ or download pack."
-                    SpeechRecognizer.ERROR_NO_MATCH -> "Listening paused after silence. Tap Mic to speak."
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Listening paused after silence. Tap Mic to speak."
-                    else -> "Voice service busy ($error). Tap System Voice ↗."
+                    -> "Offline voice pack needed for ${languageTag.uppercase()}."
+                    SpeechRecognizer.ERROR_NO_MATCH,
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
+                    -> "Listening paused after silence. Tap Mic to speak."
+                    else -> "Tap Mic to continue speaking."
                 }
                 _state.value = _state.value.copy(
                     panelVisible = true,
@@ -272,11 +272,12 @@ class VoiceInputManager(
 
                 val elapsedSilence = SystemClock.uptimeMillis() - lastVoiceActivityMs
                 if (!userRequestedStop && elapsedSilence < VOICE_MAX_SILENCE_WAIT_MS) {
+                    mainHandler.removeCallbacksAndMessages(null)
                     mainHandler.postDelayed({
                         if (!userRequestedStop) {
                             startListeningOnMain(languageTag, useUnboundDefault, isContinuation = true)
                         }
-                    }, 90L)
+                    }, 260L)
                 } else {
                     _state.value = _state.value.copy(
                         panelVisible = false,
@@ -326,16 +327,11 @@ class VoiceInputManager(
         runCatching {
             sr.startListening(intent)
         }.onFailure {
-            if (VoicePermissionBridge.canLaunchSystemVoiceRecognizer(appContext)) {
-                stopInternalOnMain(keepPanelOpen = false, resetError = true)
-                VoicePermissionBridge.launchSystemVoiceRecognizer(appContext, languageTag)
-            } else {
-                _state.value = _state.value.copy(
-                    panelVisible = true,
-                    isListening = false,
-                    errorMessage = "Could not start speech recognizer.",
-                )
-            }
+            _state.value = _state.value.copy(
+                panelVisible = true,
+                isListening = false,
+                errorMessage = "Tap Mic to retry voice typing.",
+            )
         }
     }
 

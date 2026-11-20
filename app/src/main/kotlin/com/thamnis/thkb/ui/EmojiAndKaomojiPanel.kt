@@ -92,7 +92,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 internal fun EmojiAndKaomojiPanel(
-    panelHeightDp: Float,
+    panelHeightDp: Float = 344f,
     emojiGridColumns: Int,
     emojiSections: List<EmojiSection>,
     kaomojiItems: List<KaomojiItem>,
@@ -102,7 +102,6 @@ internal fun EmojiAndKaomojiPanel(
     searchQuery: String = "",
     onSearchQueryChange: (String) -> Unit = {},
     onOpenKeyboardSearch: () -> Unit = {},
-    onResizeDeltaDp: (Float) -> Unit,
     onBackToKeyboard: () -> Unit,
     onToggleFavorite: (String) -> Unit,
     onCommitEmoji: (String) -> Unit,
@@ -115,7 +114,6 @@ internal fun EmojiAndKaomojiPanel(
 
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val latestOnResize by rememberUpdatedState(onResizeDeltaDp)
     val latestOnBackspace by rememberUpdatedState(onBackspace)
     val latestOnBackspaceRepeat by rememberUpdatedState(onBackspaceRepeat)
 
@@ -180,26 +178,12 @@ internal fun EmojiAndKaomojiPanel(
             .fillMaxWidth()
             .height(panelHeightDp.dp),
     ) {
-        // Top Bar: Back arrow + Search (Alphanum KB) + Symbol Category Icons (plus vertical drag-to-resize)
+        // Top Bar: Back arrow + Search (Alphanum KB) + Symbol Category Icons
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures { change, dragAmount ->
-                        change.consume()
-                        val deltaDp = with(density) { dragAmount.toDp().value }
-                        latestOnResize(deltaDp)
-                    }
-                },
+                .height(48.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 3.dp)
-                    .size(width = 32.dp, height = 3.dp)
-                    .background(HintTextColor.copy(alpha = 0.5f), RoundedCornerShape(2.dp)),
-            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

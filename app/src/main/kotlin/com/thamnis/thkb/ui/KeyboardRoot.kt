@@ -180,6 +180,12 @@ private data class TimedSwipePoint(
     val timeMs: Long,
 )
 
+private data class EmojiToolsPopupState(
+    val anchorX: Float,
+    val anchorY: Float,
+    val selectedIndex: Int = -1,
+)
+
 private data class ActivePointer(
     val keyId: String,
     val startPosition: Offset,
@@ -271,6 +277,7 @@ fun KeyboardRoot(
         }
     }
     var accentPopup by remember(inputSessionKey) { mutableStateOf<AccentPopupState?>(null) }
+    var emojiToolsPopup by remember(inputSessionKey) { mutableStateOf<EmojiToolsPopupState?>(null) }
     var keyPreview by remember(inputSessionKey) { mutableStateOf<KeyPreviewState?>(null) }
     var isForwardDeleteMode by remember(inputSessionKey) { mutableStateOf(false) }
     var ctrlActive by remember(inputSessionKey) { mutableStateOf(false) }
@@ -281,9 +288,7 @@ fun KeyboardRoot(
     val density = LocalDensity.current
     var rootWidthPx by remember { mutableStateOf(1080f) }
 
-    val canResizePanel = panelMode == PanelMode.EMOJI ||
-        panelMode == PanelMode.KAOMOJI ||
-        (panelMode == PanelMode.CLIPBOARD && clipboardEntries.size > 4) ||
+    val canResizePanel = (panelMode == PanelMode.CLIPBOARD && clipboardEntries.size > 4) ||
         (panelMode == PanelMode.TODO && todoTasks.size > 3)
 
     val activeLayoutId = when (layer) {
@@ -350,7 +355,7 @@ fun KeyboardRoot(
                     ) { showEmoji ->
                         if (showEmoji) {
                             EmojiAndKaomojiPanel(
-                                panelHeightDp = (scrollPanelHeightDp + 44f).coerceIn(294f, 504f),
+                                panelHeightDp = 344f,
                                 emojiGridColumns = emojiGridColumns,
                                 emojiSections = emojiSections,
                                 kaomojiItems = kaomojiItems,
@@ -364,9 +369,6 @@ fun KeyboardRoot(
                                     isEmojiSearchMode = true
                                     layer = KeyboardLayer.ALPHA
                                     panelMode = PanelMode.KEYBOARD
-                                },
-                                onResizeDeltaDp = { deltaDp ->
-                                    scrollPanelHeightDp = (scrollPanelHeightDp - deltaDp).coerceIn(250f, 460f)
                                 },
                                 onBackToKeyboard = {
                                     onKeyFeedback()
@@ -421,8 +423,9 @@ fun KeyboardRoot(
                                         onToggleExpand = {
                                             scrollPanelHeightDp = if (scrollPanelHeightDp > 300f) 250f else 420f
                                         },
-                                        onToggleTodo = {
-                                            panelMode = if (panelMode == PanelMode.TODO) PanelMode.KEYBOARD else PanelMode.TODO
+                                        onBackToKeyboard = {
+                                            onKeyFeedback()
+                                            panelMode = PanelMode.KEYBOARD
                                         },
                                         suggestions = suggestions,
                                         onSelectSuggestion = onSelectSuggestion,
@@ -545,10 +548,27 @@ fun KeyboardRoot(
                                 deleteGesturesEnabled = deleteGesturesEnabled,
                                 returnAction = if (isEmojiSearchMode) ReturnAction.SEARCH else returnAction,
                                 accentPopup = accentPopup,
+                                emojiToolsPopup = emojiToolsPopup,
                                 assets = assets,
                                 onShowAccentPopup = {
                                     accentPopup = it
                                     if (it != null) keyPreview = null
+                                },
+                                onShowEmojiToolsPopup = {
+                                    emojiToolsPopup = it
+                                    if (it != null) {
+                                        accentPopup = null
+                                        keyPreview = null
+                                    }
+                                },
+                                onSelectEmojiTool = { toolIdx ->
+                                    emojiToolsPopup = null
+                                    onKeyFeedback()
+                                    when (toolIdx) {
+                                        0 -> panelMode = PanelMode.CLIPBOARD
+                                        1 -> panelMode = PanelMode.TODO
+                                        2 -> onOpenSettings()
+                                    }
                                 },
                                 onShowKeyPreview = { preview ->
                                     keyPreview = if (showKeyPreview) preview else null
@@ -905,6 +925,106 @@ fun KeyboardRoot(
                 }
             }
         }
+
+        var activeEmojiToolsPopup by remember { mutableStateOf<EmojiToolsPopupState?>(null) }
+        if (emojiToolsPopup != null) {
+            activeEmojiToolsPopup = emojiToolsPopup
+        }
+        AnimatedVisibility(
+            visible = emojiToolsPopup != null && panelMode == PanelMode.KEYBOARD,
+            enter = scaleIn(
+                initialScale = 0.72f,
+                transformOrigin = TransformOrigin(0.5f, 1f),
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium,
+                ),
+            ) + fadeIn(animationSpec = tween(90)),
+            exit = scaleOut(
+                targetScale = 0.82f,
+                transformOrigin = TransformOrigin(0.5f, 1f),
+                animationSpec = tween(70),
+            ) + fadeOut(animationSpec = tween(70)),
+        ) {
+            val toolsPopup = activeEmojiToolsPopup ?: return@AnimatedVisibility
+            val cellDp = 44.dp
+            val popupHeightPx = with(density) { (cellDp.value + 16).dp.toPx() }
+            val gridTopInRootPx = with(density) { (ThKbInputMethodService.TOP_POPUP_HEADROOM_DP + 44).dp.toPx() }
+            val popupOffsetY = (gridTopInRootPx + toolsPopup.anchorY - popupHeightPx - with(density) { 6.dp.toPx() })
+                .coerceAtLeast(with(density) { 4.dp.toPx() })
+                .roundToInt()
+            val popupOffsetX = toolsPopup.anchorX.roundToInt()
+            val toolIcons = listOf(
+                Icons.Outlined.ContentPaste to "Clipboard",
+                Icons.Outlined.Checklist to "To-Do",
+                Icons.Outlined.Settings to "Settings",
+            )
+            val selectedIdx = toolsPopup.selectedIndex
+            val bubbleCol by animateFloatAsState(
+                targetValue = selectedIdx.coerceAtLeast(0).toFloat(),
+                animationSpec = spring(dampingRatio = 0.72f, stiffness = 650f),
+                label = "emojiToolBubbleCol",
+            )
+            val cellStepX = cellDp + 4.dp
+
+            Surface(
+                color = Color(0xFF2C2E33),
+                shape = RoundedCornerShape(24.dp),
+                shadowElevation = 8.dp,
+                modifier = Modifier
+                    .zIndex(21f)
+                    .offset { IntOffset(popupOffsetX, popupOffsetY) },
+            ) {
+                Box(modifier = Modifier.padding(8.dp)) {
+                    if (selectedIdx in 0..2) {
+                        Box(
+                            modifier = Modifier
+                                .offset {
+                                    val xPx = with(density) { (bubbleCol * cellStepX.toPx()).roundToInt() }
+                                    IntOffset(xPx, 0)
+                                }
+                                .size(cellDp)
+                                .background(ReturnBgColor, CircleShape),
+                        )
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        toolIcons.forEachIndexed { idx, (iconVec, desc) ->
+                            val isSelected = idx == selectedIdx
+                            val iconTint by animateColorAsState(
+                                targetValue = if (isSelected) ReturnFgColor else Color.White,
+                                animationSpec = tween(100),
+                                label = "emojiToolIconTint",
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(cellDp)
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        emojiToolsPopup = null
+                                        onKeyFeedback()
+                                        when (idx) {
+                                            0 -> panelMode = PanelMode.CLIPBOARD
+                                            1 -> panelMode = PanelMode.TODO
+                                            2 -> onOpenSettings()
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = iconVec,
+                                    contentDescription = desc,
+                                    tint = iconTint,
+                                    modifier = Modifier.size(21.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1037,31 +1157,14 @@ private fun ToolbarRow(
     onToggleVoice: () -> Unit,
     onResizeDeltaDp: (Float) -> Unit,
     onToggleExpand: () -> Unit,
-    onToggleTodo: () -> Unit,
+    onBackToKeyboard: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
 ) {
     val density = LocalDensity.current
     val latestOnResize by rememberUpdatedState(onResizeDeltaDp)
-    var showToolsOverride by remember { mutableStateOf(false) }
-
-    LaunchedEffect(suggestions) {
-        if (suggestions.isNotEmpty()) {
-            showToolsOverride = false
-        }
-    }
-
-    val hasSuggestions = panelMode == PanelMode.KEYBOARD && suggestions.isNotEmpty()
-    val isSuggestionMode = hasSuggestions && !showToolsOverride
-
-    val arrowRotation by animateFloatAsState(
-        targetValue = if (isSuggestionMode) 0f else 180f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "toolbarArrowRotation",
-    )
+    val isSuggestionMode = panelMode == PanelMode.KEYBOARD && suggestions.isNotEmpty()
+    val isSubPanel = panelMode == PanelMode.CLIPBOARD || panelMode == PanelMode.TODO
 
     val resizeArrowRotation by animateFloatAsState(
         targetValue = if (isExpanded) 180f else 0f,
@@ -1111,129 +1214,94 @@ private fun ToolbarRow(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (hasSuggestions) {
-                    Box(
+                if (isSuggestionMode) {
+                    Row(
                         modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .clickable { showToolsOverride = !showToolsOverride },
-                        contentAlignment = Alignment.Center,
+                            .fillMaxWidth()
+                            .height(36.dp)
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceEvenly,
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
-                            contentDescription = if (isSuggestionMode) "Show Tools" else "Show Suggestions",
-                            tint = ToolbarTextColor,
-                            modifier = Modifier
-                                .size(20.dp)
-                                .graphicsLayer {
-                                    rotationZ = arrowRotation
-                                },
-                        )
-                    }
-                }
-
-                AnimatedContent(
-                    targetState = isSuggestionMode,
-                    transitionSpec = {
-                        (fadeIn(tween(150)) + slideInHorizontally(tween(170)) { if (targetState) it / 5 else -it / 5 })
-                            .togetherWith(fadeOut(tween(110)))
-                    },
-                    modifier = Modifier.weight(1f),
-                    label = "toolbarModeContent",
-                ) { suggestionView ->
-                    if (suggestionView) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(36.dp)
-                                .padding(horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                        ) {
-                            val displayCandidates = suggestions.take(3)
-                            displayCandidates.forEachIndexed { idx, candidate ->
-                                if (idx > 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(1.dp)
-                                            .height(14.dp)
-                                            .background(HintTextColor.copy(alpha = 0.25f)),
-                                    )
-                                }
-                                val isCenter = when {
-                                    displayCandidates.size >= 3 -> idx == 1
-                                    displayCandidates.size == 2 && displayCandidates[0].isLiteral -> idx == 1
-                                    else -> idx == 0
-                                }
+                        val displayCandidates = suggestions.take(3)
+                        displayCandidates.forEachIndexed { idx, candidate ->
+                            if (idx > 0) {
                                 Box(
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .then(
-                                            if (isCenter) {
-                                                Modifier.background(ReturnBgColor.copy(alpha = 0.16f))
-                                            } else {
-                                                Modifier
-                                            },
-                                        )
-                                        .combinedClickable(
-                                            onClick = { onSelectSuggestion(candidate) },
-                                            onLongClick = {
-                                                if (!candidate.isLiteral) {
-                                                    onBlockSuggestion(candidate.word)
-                                                }
-                                            },
-                                        )
-                                        .padding(horizontal = 4.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = if (candidate.isLiteral) "“${candidate.word}”" else candidate.word,
-                                        color = if (isCenter) ReturnBgColor else Color(0xFFE3E3E3),
-                                        fontSize = if (isCenter) 15.sp else 14.sp,
-                                        fontWeight = if (isCenter) FontWeight.SemiBold else FontWeight.Normal,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                        .width(1.dp)
+                                        .height(14.dp)
+                                        .background(HintTextColor.copy(alpha = 0.25f)),
+                                )
+                            }
+                            val isCenter = when {
+                                displayCandidates.size >= 3 -> idx == 1
+                                displayCandidates.size == 2 && displayCandidates[0].isLiteral -> idx == 1
+                                else -> idx == 0
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .then(
+                                        if (isCenter) {
+                                            Modifier.background(ReturnBgColor.copy(alpha = 0.16f))
+                                        } else {
+                                            Modifier
+                                        },
                                     )
-                                }
+                                    .combinedClickable(
+                                        onClick = { onSelectSuggestion(candidate) },
+                                        onLongClick = {
+                                            if (!candidate.isLiteral) {
+                                                onBlockSuggestion(candidate.word)
+                                            }
+                                        },
+                                    )
+                                    .padding(horizontal = 4.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = if (candidate.isLiteral) "“${candidate.word}”" else candidate.word,
+                                    color = if (isCenter) ReturnBgColor else Color(0xFFE3E3E3),
+                                    fontSize = if (isCenter) 15.sp else 14.sp,
+                                    fontWeight = if (isCenter) FontWeight.SemiBold else FontWeight.Normal,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
                         }
-                    } else {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            ToolbarIconButton(
-                                icon = if (panelMode == PanelMode.TODO) {
-                                    Icons.Outlined.Keyboard
-                                } else {
-                                    Icons.Outlined.Checklist
-                                },
-                                contentDescription = "Todo List",
-                                active = panelMode == PanelMode.TODO,
-                                onClick = onToggleTodo,
-                            )
-                            if (canResize) {
-                                Box(
+                    }
+                } else if (isSubPanel) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        ToolbarIconButton(
+                            icon = Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = "Back to Keyboard",
+                            active = false,
+                            onClick = onBackToKeyboard,
+                        )
+                        if (canResize) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isExpanded) ReturnBgColor.copy(alpha = 0.2f) else Color.Transparent)
+                                    .clickable(onClick = onToggleExpand),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.KeyboardArrowUp,
+                                    contentDescription = "Resize",
+                                    tint = if (isExpanded) ReturnBgColor else ToolbarTextColor,
                                     modifier = Modifier
-                                        .size(34.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isExpanded) ReturnBgColor.copy(alpha = 0.2f) else Color.Transparent)
-                                        .clickable(onClick = onToggleExpand),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.KeyboardArrowUp,
-                                        contentDescription = "Resize",
-                                        tint = if (isExpanded) ReturnBgColor else ToolbarTextColor,
-                                        modifier = Modifier
-                                            .size(20.dp)
-                                            .graphicsLayer {
-                                                rotationZ = resizeArrowRotation
-                                            },
-                                    )
-                                }
+                                        .size(20.dp)
+                                        .graphicsLayer {
+                                            rotationZ = resizeArrowRotation
+                                        },
+                                )
                             }
                         }
                     }
@@ -1398,8 +1466,11 @@ private fun TouchKeyGrid(
     deleteGesturesEnabled: Boolean,
     returnAction: ReturnAction,
     accentPopup: AccentPopupState?,
+    emojiToolsPopup: EmojiToolsPopupState?,
     assets: AssetRepository,
     onShowAccentPopup: (AccentPopupState?) -> Unit,
+    onShowEmojiToolsPopup: (EmojiToolsPopupState?) -> Unit,
+    onSelectEmojiTool: (Int) -> Unit,
     onShowKeyPreview: (KeyPreviewState?) -> Unit,
     onToggleForwardDeleteMode: () -> Unit,
     onKeyFeedback: () -> Unit,
@@ -1435,7 +1506,10 @@ private fun TouchKeyGrid(
     var activeGlidedKey by remember(rows) { mutableStateOf<String?>(null) }
     var spaceGlideOffsetPx by remember(rows) { mutableStateOf(0f) }
     var spaceGlideOffsetY by remember(rows) { mutableStateOf(0f) }
-    var backspaceSpecialMode by remember(rows) { mutableStateOf<String?>(null) }
+    var backspaceDotActive by remember(rows) { mutableStateOf(false) }
+    var backspaceDotX by remember(rows) { mutableStateOf(0f) }
+    var backspaceDotY by remember(rows) { mutableStateOf(0f) }
+    var backspacePulseSeq by remember(rows) { mutableStateOf(0) }
     var specialActionHudText by remember(rows) { mutableStateOf<String?>(null) }
     var specialActionSeq by remember(rows) { mutableStateOf(0) }
     var trailClockMs by remember { mutableStateOf(0L) }
@@ -1445,8 +1519,18 @@ private fun TouchKeyGrid(
     LaunchedEffect(specialActionSeq) {
         if (specialActionSeq > 0) {
             delay(560L)
-            backspaceSpecialMode = null
             specialActionHudText = null
+        }
+    }
+
+    LaunchedEffect(backspacePulseSeq) {
+        if (backspacePulseSeq > 0) {
+            delay(280L)
+            if (activePointers.values.none { it.keyId == "BACKSPACE" }) {
+                backspaceDotActive = false
+                backspaceDotX = 0f
+                backspaceDotY = 0f
+            }
         }
     }
 
@@ -1466,6 +1550,7 @@ private fun TouchKeyGrid(
 
     val latestShift by rememberUpdatedState(shiftState)
     val latestPopup by rememberUpdatedState(accentPopup)
+    val latestEmojiToolsPopup by rememberUpdatedState(emojiToolsPopup)
     val latestIsAlphaLayer by rememberUpdatedState(isAlphaLayer)
     val latestLayoutId by rememberUpdatedState(layoutId)
     val latestLanguageLayoutId by rememberUpdatedState(languageLayoutId)
@@ -1478,6 +1563,8 @@ private fun TouchKeyGrid(
     val latestOnToggleGlideMode by rememberUpdatedState(onToggleGlideMode)
     val latestOnSwipeWord by rememberUpdatedState(onSwipeWord)
     val latestOnShowAccentPopup by rememberUpdatedState(onShowAccentPopup)
+    val latestOnShowEmojiToolsPopup by rememberUpdatedState(onShowEmojiToolsPopup)
+    val latestOnSelectEmojiTool by rememberUpdatedState(onSelectEmojiTool)
     val latestOnShowKeyPreview by rememberUpdatedState(onShowKeyPreview)
     val latestOnToggleForwardDelete by rememberUpdatedState(onToggleForwardDeleteMode)
     val latestOnKeyAction by rememberUpdatedState(onKeyAction)
@@ -1505,6 +1592,10 @@ private fun TouchKeyGrid(
 
                             if (change.pressed && !change.previousPressed) {
                                 val hitKey = findHitKey(keyBounds, localPos) ?: continue
+
+                                if (latestEmojiToolsPopup != null) {
+                                    latestOnShowEmojiToolsPopup(null)
+                                }
 
                                 if (latestPopup == null && activePointers.isNotEmpty() && hitKey != "SHIFT") {
                                     val toCommit = activePointers.entries.filter { (_, prev) ->
@@ -1553,7 +1644,31 @@ private fun TouchKeyGrid(
                                             }
                                         }
                                     }
-                                    "SHIFT", "SYMBOLS", "MORE_SYMBOLS", "ALPHA", "EMOJI_KEY", "RETURN" -> {
+                                    "EMOJI_KEY" -> {
+                                        // Hold Emoji button -> reveal hidden Tools popup (Clipboard, To-Do, Settings)
+                                        val rect = keyBounds["EMOJI_KEY"]
+                                        pointer.longPressJob = scope.launch {
+                                            delay(latestLongPressDelayMs)
+                                            if (!pointer.isGliding) {
+                                                pointer.deleteGestureTriggered = true
+                                                latestOnKeyFeedback()
+                                                val popupWidthPx = with(density) { (3 * 48f + 12f).dp.toPx() }
+                                                val centerX = rect?.center?.x ?: localPos.x
+                                                val popupLeftX = (centerX - popupWidthPx / 2f).coerceIn(
+                                                    with(density) { 6.dp.toPx() },
+                                                    (latestRootWidthPx - popupWidthPx - with(density) { 6.dp.toPx() }).coerceAtLeast(6f),
+                                                )
+                                                latestOnShowEmojiToolsPopup(
+                                                    EmojiToolsPopupState(
+                                                        anchorX = popupLeftX,
+                                                        anchorY = rect?.top ?: localPos.y,
+                                                        selectedIndex = -1,
+                                                    ),
+                                                )
+                                            }
+                                        }
+                                    }
+                                    "SHIFT", "SYMBOLS", "MORE_SYMBOLS", "ALPHA", "RETURN" -> {
                                         // No long-press character popup for control keys
                                     }
                                     else -> {
@@ -1659,6 +1774,18 @@ private fun TouchKeyGrid(
                                             pointer.lastGlideY += stepsY * glideVerticalStepPx
                                         }
                                     }
+                                } else if (pointer.keyId == "EMOJI_KEY") {
+                                    val toolsPopup = latestEmojiToolsPopup
+                                    if (toolsPopup != null && (abs(totalDx) > 8f || totalDy < -10f)) {
+                                        val cellStepPx = with(density) { 48.dp.toPx() }
+                                        val padPx = with(density) { 8.dp.toPx() }
+                                        val col = ((localPos.x - (toolsPopup.anchorX + padPx)) / cellStepPx)
+                                            .toInt()
+                                            .coerceIn(0, 2)
+                                        if (col != toolsPopup.selectedIndex) {
+                                            latestOnShowEmojiToolsPopup(toolsPopup.copy(selectedIndex = col))
+                                        }
+                                    }
                                 } else if (pointer.keyId == "SHIFT") {
                                     // Glide Up on SHIFT -> Toggle Char-by-Char Glide vs Word Glide Mode
                                     if (!pointer.deleteGestureTriggered && totalDy < -deleteSwipeThresholdPx && abs(totalDy) > abs(totalDx)) {
@@ -1680,6 +1807,9 @@ private fun TouchKeyGrid(
                                     if (abs(totalDx) > glideThresholdPx || abs(totalDy) > glideThresholdPx) {
                                         activeGlidedKey = "BACKSPACE"
                                         glidedKeyTimestamps["BACKSPACE"] = android.os.SystemClock.uptimeMillis()
+                                        backspaceDotActive = true
+                                        backspaceDotX = totalDx.coerceIn(-22f, 22f)
+                                        backspaceDotY = totalDy.coerceIn(-16f, 16f)
                                     }
                                     if (!pointer.deleteGestureTriggered) {
                                         when {
@@ -1688,37 +1818,44 @@ private fun TouchKeyGrid(
                                                 pointer.deleteGestureTriggered = true
                                                 pointer.isGliding = true
                                                 pointer.repeatJob?.cancel()
+                                                backspaceDotActive = true
+                                                backspaceDotX = 0f
+                                                backspaceDotY = 14f
+                                                backspacePulseSeq++
                                                 latestOnKeyFeedback()
                                                 latestOnToggleForwardDelete()
                                             }
-                                            // Glide up -> delete one paragraph at once (Special UI/UX feedback!)
+                                            // Glide up -> delete one paragraph at once (Circular dot shifts to top!)
                                             totalDy < -deleteSwipeThresholdPx && abs(totalDy) > abs(totalDx) -> {
                                                 pointer.deleteGestureTriggered = true
                                                 pointer.isGliding = true
                                                 pointer.repeatJob?.cancel()
-                                                backspaceSpecialMode = "LINE"
-                                                specialActionHudText = "⌫ Line Cleared"
-                                                specialActionSeq++
+                                                backspaceDotActive = true
+                                                backspaceDotX = 0f
+                                                backspaceDotY = -15f
+                                                backspacePulseSeq++
                                                 latestOnKeyFeedback()
                                                 latestOnDeleteParagraph()
                                             }
-                                            // Glide left -> word delete mode (Special UI/UX feedback!)
+                                            // Glide left -> word delete mode (Circular dot shifts to left!)
                                             totalDx < -deleteSwipeThresholdPx && abs(totalDx) >= abs(totalDy) -> {
                                                 pointer.deleteGestureTriggered = true
                                                 pointer.isGliding = true
                                                 pointer.lastGlideX = localPos.x
                                                 pointer.repeatJob?.cancel()
-                                                backspaceSpecialMode = "WORD"
-                                                specialActionHudText = "⌫ Word Deleted"
-                                                specialActionSeq++
+                                                backspaceDotActive = true
+                                                backspaceDotX = -20f
+                                                backspaceDotY = 0f
+                                                backspacePulseSeq++
                                                 latestOnKeyFeedback()
                                                 latestOnDeleteWord()
                                                 pointer.repeatJob = scope.launch {
                                                     delay(280L)
                                                     while (true) {
-                                                        backspaceSpecialMode = "WORD"
-                                                        specialActionHudText = "⌫ Word Deleted"
-                                                        specialActionSeq++
+                                                        backspaceDotActive = true
+                                                        backspaceDotX = -20f
+                                                        backspaceDotY = 0f
+                                                        backspacePulseSeq++
                                                         latestOnDeleteWord()
                                                         delay(140L)
                                                     }
@@ -1728,9 +1865,10 @@ private fun TouchKeyGrid(
                                     } else if (pointer.isGliding && totalDx < -deleteSwipeThresholdPx) {
                                         val stepDx = pointer.lastGlideX - localPos.x
                                         if (stepDx >= wordSwipeStepPx) {
-                                            backspaceSpecialMode = "WORD"
-                                            specialActionHudText = "⌫ Word Deleted"
-                                            specialActionSeq++
+                                            backspaceDotActive = true
+                                            backspaceDotX = -20f
+                                            backspaceDotY = 0f
+                                            backspacePulseSeq++
                                             latestOnDeleteWord()
                                             pointer.lastGlideX = localPos.x
                                         }
@@ -1901,10 +2039,17 @@ private fun TouchKeyGrid(
                                 if (pointer.keyId == "SPACE") {
                                     spaceGlideOffsetPx = 0f
                                     spaceGlideOffsetY = 0f
+                                } else if (pointer.keyId == "BACKSPACE") {
+                                    backspacePulseSeq++
                                 }
 
+                                val toolsPopup = latestEmojiToolsPopup
                                 val popup = latestPopup
-                                if (popup != null) {
+                                if (pointer.keyId == "EMOJI_KEY" && toolsPopup != null) {
+                                    if (toolsPopup.selectedIndex in 0..2) {
+                                        latestOnSelectEmojiTool(toolsPopup.selectedIndex)
+                                    }
+                                } else if (popup != null) {
                                     val chosen = popup.variants[popup.selectedIndex]
                                     latestOnShowAccentPopup(null)
                                     latestOnKeyAction(pointer.keyId, chosen)
@@ -1968,11 +2113,9 @@ private fun TouchKeyGrid(
                         val isShiftActive = keyId == "SHIFT" && shiftState != ShiftState.OFF
                         val isForwardDeleteKey = keyId == "BACKSPACE" && isForwardDeleteMode
                         val isSpaceGliding = keyId == "SPACE" && activePointers.values.any { it.keyId == "SPACE" && it.isGliding }
-                        val activeBackspaceSpecial = if (keyId == "BACKSPACE") backspaceSpecialMode else null
+                        val isBackspaceDotVisible = keyId == "BACKSPACE" && backspaceDotActive
 
                         val bg = when {
-                            activeBackspaceSpecial == "LINE" -> Color(0xFFDC2626)
-                            activeBackspaceSpecial == "WORD" -> Color(0xFFEA580C)
                             isReturn -> ReturnBgColor
                             isShiftActive || isForwardDeleteKey -> KeyPressedColor
                             isPressed -> KeyPressedColor
@@ -1981,7 +2124,6 @@ private fun TouchKeyGrid(
                             else -> KeyBgColor
                         }
                         val fg = when {
-                            activeBackspaceSpecial != null -> Color.White
                             isReturn -> ReturnFgColor
                             isForwardDeleteKey -> ReturnBgColor
                             else -> Color.White
@@ -2019,7 +2161,9 @@ private fun TouchKeyGrid(
                             label = keyLabel,
                             shiftState = shiftState,
                             isForwardDeleteKey = isForwardDeleteKey,
-                            backspaceSpecialMode = activeBackspaceSpecial,
+                            isBackspaceDotVisible = isBackspaceDotVisible,
+                            backspaceDotX = if (keyId == "BACKSPACE") backspaceDotX else 0f,
+                            backspaceDotY = if (keyId == "BACKSPACE") backspaceDotY else 0f,
                             isPressed = isPressed,
                             isGlidedOver = isKeyGlided,
                             isSpaceGliding = isSpaceGliding,
@@ -2114,20 +2258,14 @@ private fun TouchKeyGrid(
                 .align(Alignment.TopCenter)
                 .padding(top = 2.dp),
         ) {
-            val badgeBg = when (backspaceSpecialMode) {
-                "LINE" -> Color(0xFFDC2626)
-                "WORD" -> Color(0xFFEA580C)
-                else -> ReturnBgColor
-            }
-            val badgeFg = if (backspaceSpecialMode != null) Color.White else ReturnFgColor
             Surface(
-                color = badgeBg,
+                color = ReturnBgColor,
                 shape = RoundedCornerShape(50),
                 shadowElevation = 4.dp,
             ) {
                 Text(
                     text = specialActionHudText.orEmpty(),
-                    color = badgeFg,
+                    color = ReturnFgColor,
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp),
@@ -2146,7 +2284,9 @@ private fun RowScope.KeyCap(
     label: String,
     shiftState: ShiftState,
     isForwardDeleteKey: Boolean,
-    backspaceSpecialMode: String? = null,
+    isBackspaceDotVisible: Boolean = false,
+    backspaceDotX: Float = 0f,
+    backspaceDotY: Float = 0f,
     isPressed: Boolean,
     isGlidedOver: Boolean,
     isSpaceGliding: Boolean,
@@ -2168,7 +2308,7 @@ private fun RowScope.KeyCap(
     )
     val keyScale by animateFloatAsState(
         targetValue = when {
-            backspaceSpecialMode != null -> 1.09f
+            isBackspaceDotVisible -> 1.05f
             isPressed -> 0.93f
             isSpaceGliding -> 1.03f
             isGlidedOver -> 1.045f
@@ -2193,15 +2333,21 @@ private fun RowScope.KeyCap(
         ),
         label = "backspaceFlip",
     )
-    val backspaceShiftX by animateFloatAsState(
-        targetValue = if (backspaceSpecialMode == "WORD") -7f else 0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "backspaceShiftX",
+    val animatedBackspaceDotX by animateFloatAsState(
+        targetValue = if (isBackspaceDotVisible) backspaceDotX.coerceIn(-20f, 20f) else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "backspaceDotX",
     )
-    val backspaceShiftY by animateFloatAsState(
-        targetValue = if (backspaceSpecialMode == "LINE") -7f else 0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "backspaceShiftY",
+    val animatedBackspaceDotY by animateFloatAsState(
+        targetValue = if (isBackspaceDotVisible) backspaceDotY.coerceIn(-15f, 15f) else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "backspaceDotY",
     )
     val animatedSpaceShiftPx by animateFloatAsState(
         targetValue = if (isSpaceGliding) spaceGlideOffsetPx.coerceIn(-44f, 44f) else 0f,
@@ -2230,9 +2376,9 @@ private fun RowScope.KeyCap(
                 if (keyId == "SPACE" && isSpaceGliding) {
                     translationX = animatedSpaceShiftPx * 0.14f
                     translationY = animatedSpaceShiftY * 0.35f
-                } else if (keyId == "BACKSPACE") {
-                    translationX = backspaceShiftX
-                    translationY = backspaceShiftY
+                } else if (keyId == "BACKSPACE" && isBackspaceDotVisible) {
+                    translationX = animatedBackspaceDotX * 0.18f
+                    translationY = animatedBackspaceDotY * 0.25f
                 }
             }
             .onGloballyPositioned(onBoundsChanged)
@@ -2272,45 +2418,43 @@ private fun RowScope.KeyCap(
                 )
             }
             keyId == "BACKSPACE" -> {
-                AnimatedContent(
-                    targetState = backspaceSpecialMode,
-                    transitionSpec = {
-                        (scaleIn(initialScale = 0.7f, animationSpec = tween(90)) + fadeIn(tween(90)))
-                            .togetherWith(scaleOut(targetScale = 0.7f, animationSpec = tween(70)) + fadeOut(tween(70)))
-                    },
-                    modifier = Modifier.align(Alignment.Center),
-                    label = "backspaceSpecialContent",
-                ) { special ->
-                    when (special) {
-                        "LINE" -> {
-                            Text(
-                                text = "▲ Line",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        "WORD" -> {
-                            Text(
-                                text = "« Word",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        else -> {
-                            Icon(
-                                imageVector = icon ?: Icons.AutoMirrored.Outlined.Backspace,
-                                contentDescription = label,
-                                tint = foregroundColor,
+                if (isBackspaceDotVisible) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .fillMaxHeight()
+                            .align(Alignment.Center),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .graphicsLayer {
+                                    translationX = animatedBackspaceDotX
+                                    translationY = animatedBackspaceDotY
+                                }
+                                .size(20.dp)
+                                .background(ReturnBgColor.copy(alpha = 0.25f), CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
                                 modifier = Modifier
-                                    .size(22.dp)
-                                    .graphicsLayer {
-                                        rotationY = backspaceFlip
-                                    },
+                                    .size(10.dp)
+                                    .background(ReturnBgColor, CircleShape),
                             )
                         }
                     }
+                } else {
+                    Icon(
+                        imageVector = icon ?: Icons.AutoMirrored.Outlined.Backspace,
+                        contentDescription = label,
+                        tint = foregroundColor,
+                        modifier = Modifier
+                            .size(22.dp)
+                            .align(Alignment.Center)
+                            .graphicsLayer {
+                                rotationY = backspaceFlip
+                            },
+                    )
                 }
             }
             keyId == "RETURN" -> {

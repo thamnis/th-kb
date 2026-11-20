@@ -283,10 +283,8 @@ class ThKbInputMethodService :
                             personalDictionary.learnWord(prevWord, candidate.word, boost)
                             suggestionEngine.learnWord(prevWord, candidate.word, boost)
                         }
-                        pendingReplacement = PendingReplacement(
-                            originalPrefix = if (isReplacingSwipedWord) "" else prefix,
-                            replacedText = replacementWithSpace,
-                        )
+                        // Manually committed suggestion must not be removed/reverted by Backspace
+                        pendingReplacement = null
                         swipeAlternativesTail = null
                         pendingPostSwipeSpace = false
                         suppressedAutoReplacePrefix = null

@@ -61,27 +61,12 @@ internal fun VoiceTypingPanel(
         verticalArrangement = Arrangement.SpaceBetween,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Top header strip: System Voice fallback button + clickable language toggle
+        // Top header strip: clickable language toggle pill
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Surface(
-                color = ActionKeyBgColor,
-                shape = RoundedCornerShape(50),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .clickable(onClick = onLaunchSystemVoice),
-            ) {
-                Text(
-                    text = "System Voice ↗",
-                    color = ReturnBgColor,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                )
-            }
             Surface(
                 color = PillKeyBgColor,
                 shape = RoundedCornerShape(50),
