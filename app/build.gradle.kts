@@ -13,15 +13,16 @@ android {
         applicationId = "com.thamnis.thkb"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.8.0-alpha.1"
+        versionCode = 11
+        versionName = "1.0.0-beta.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

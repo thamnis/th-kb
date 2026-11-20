@@ -585,6 +585,7 @@ class SettingsActivity : ComponentActivity() {
                                                     "• Glide Up on Shift (⇧): Switch between Word Glide and Char-by-Char Glide.\n" +
                                                     "• Hold Spacebar (1s): Switch between French AZERTY & English QWERTY.\n" +
                                                     "• Slide Spacebar: Move the cursor left/right or up/down with the 2D dot indicator.\n" +
+                                                    "• Hold Emoji (☺): Reveal hidden tools (Clipboard, To-Do List, Settings).\n" +
                                                     "• Glide Up on ?123 / ABC: Switch between Numpad (123) and Symbols (?#).",
                                                 fontSize = 13.sp,
                                                 color = SettingsTextSecondary,

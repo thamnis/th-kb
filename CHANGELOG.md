@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-beta.1] - 2026-11-20
+
+### Added
+- **Dialect & Jargon Vocabulary Browser**: Tap any pack in **Settings → Dialect & Jargon Store** to inspect, search, and filter all words and multi-word expressions inside that pack (`DialectPack.allWords`, `DialectPack.samplePhrases`).
+- **2D Spacebar Cursor Dot & Hold-to-Switch Delay**: Replaced spacebar cursor arrows with a sleek 2D spring-animated circular dot (`translationX` + `translationY`) and increased Spacebar language-switch hold delay to `1s`.
+- **Shift Glide-Up Mode Switch**: Glide up on `SHIFT` (`⇧`) to toggle between **Word Glide** (`Word`) and **Char-by-Char Glide** (`Char`) without cluttering the toolbar.
+- **Hidden Tools Under Emoji Key**: Hold the `☺` key to reveal a floating pill menu for **Clipboard**, **To-Do List**, and **Settings**; removed To-Do, Clipboard, Settings, and Emoji buttons from the main toolbar.
+- **Alphanumeric Keyboard Emoji Search**: Tapping Search inside the Emoji panel now opens the full alphanumeric keyboard with a live matching emoji strip above the keys.
+- **Live Voice Streaming & Extended Silence Patience**: Voice typing streams partial words live into the text field, trims oldest words from the left in the voice panel (`formatLeftTrimmedVoiceStream`), extends silence tolerance (`14s`), and stays strictly inside `th-kb` without external Google voice popups.
+- **Smart Spacebar Top-1 Commit & `'` → `?` Shift Mapping**: Pressing Space commits the top-1 suggestion (cancelable via Backspace, while manually tapped suggestions stay preserved on Backspace), and `SHIFT` turns `'` into `?`.
+
+### Changed
+- **Release Optimization**: Enabled R8 minification and resource shrinking (`isMinifyEnabled = true`, `isShrinkResources = true`) for release APKs.
+- **Fixed Taller Emoji Panel**: Set Emoji & Kaomoji panel to a fixed taller `344.dp` height with tighter zero-gap emoji grid spacing (`32.sp` at 8 columns).
+- **Fixed Symbol Layer Language Bug**: Separated active symbol/numeric layer IDs from `languageLayoutId` so entering `?123` never resets the keyboard language.
+
 ## [0.8.0-alpha.1] - 2026-11-19
 
 ### Added

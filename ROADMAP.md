@@ -75,7 +75,8 @@
 
 ## `v1.0` — Public Release
 
-- [ ] Daily-driver stability, touch latency tuning, and `v0.x` bug fixes
+- [x] **Public Beta (`v1.0.0-beta.1`)**: R8-minified release build, full Dialect Store word browser, Shift glide-up mode switch, hold-Emoji hidden tools, 2D Spacebar cursor dot, live Voice streaming, and Alphanumeric Emoji search
+- [ ] Final beta feedback, touch latency tuning, and signed `v1.0.0` website release
 - [x] Layout & settings backup/export (JSON) *(shipped in v0.4)*
 
 ### Backlog — After `v1.0`
