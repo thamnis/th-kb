@@ -77,6 +77,7 @@
 
 - [x] **Public Beta (`v1.0.0-beta.1`)**: R8-minified release build, full Dialect Store word browser, Shift glide-up mode switch, hold-Emoji hidden tools, 2D Spacebar cursor dot, live Voice streaming, and Alphanumeric Emoji search
 - [x] **Beta 2 (`v1.0.0-beta.2`)**: Toolbar Undo/Redo glide, char-glided symbols & numbers, dismissible first-launch gesture tip, Offline Voice Packs shortcut, and distinct haptic feedback primitives
+- [x] **Beta 3 (`v1.0.0-beta.3`)**: Full-toolbar Undo/Redo swipe (even over suggestions), Shift selection case cycling, reliable key bubble release, and cleaner toolbar without arrow buttons or tip banner
 - [ ] Final beta feedback, touch latency tuning, and signed `v1.0.0` website release
 - [x] Layout & settings backup/export (JSON) *(shipped in v0.4)*
 

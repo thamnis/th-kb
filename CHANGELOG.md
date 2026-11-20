@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-beta.3] - 2026-11-20
+
+### Added
+- **Shift Case-Toggle on Selection**: Tapping `SHIFT` while words or a sentence are selected cycles the selection through `lowercase` → `Title Case` → `UPPERCASE` → `lowercase`, preserving selection and Undo history.
+
+### Changed
+- **Full-Toolbar Undo / Redo Swipe**: Removed the Undo/Redo arrow buttons pill and enabled horizontal swipe-to-Undo (`←`) / swipe-to-Redo (`→`) across the entire top toolbar space, including while suggestions are displayed.
+- **Removed First-Launch Gesture Tip**: Removed the dismissible gesture tip bar above the toolbar.
+
+### Fixed
+- **Key Preview Bubble Release**: Ensured the key preview bubble disappears immediately and reliably when lifting fingers or cancelling a gesture.
+
 ## [1.0.0-beta.2] - 2026-11-20
 
 ### Added
