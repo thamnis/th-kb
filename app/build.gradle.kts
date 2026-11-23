@@ -13,8 +13,8 @@ android {
         applicationId = "com.thamnis.thkb"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "1.3.0-beta.2"
+        versionCode = 16
+        versionName = "2.0.0-beta.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -56,6 +56,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.emoji2.emojipicker)
+    implementation(libs.mlkit.text.recognition)
     implementation("${libs.jna.get()}@aar")
 
     testImplementation(libs.junit)

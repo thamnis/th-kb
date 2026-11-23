@@ -119,6 +119,7 @@ import com.thamnis.thkb.data.PersonalDictionaryManager
 import com.thamnis.thkb.data.RemoteInputClient
 import com.thamnis.thkb.data.TodoListManager
 import com.thamnis.thkb.data.TransferResult
+import com.thamnis.thkb.data.TypingMetricsManager
 import com.thamnis.thkb.ui.allAvailablePalettes
 import com.thamnis.thkb.ui.resolveKbPalette
 import kotlinx.coroutines.launch
@@ -150,6 +151,7 @@ private enum class SettingsPage(val title: String) {
     LAYOUT("Language & Layout"),
     THEMES("Themes & Ergonomics"),
     CROSS_DEVICE("Cross-Device & Remote"),
+    METRICS("Language Level & Stats"),
     DIALECT_STORE("Dialect & Jargon Store"),
     DIALECT_DETAIL("Dialect Vocabulary"),
     PERSONAL_DICT("My Custom Words"),
@@ -169,11 +171,13 @@ class SettingsActivity : ComponentActivity() {
         val todoManager = TodoListManager(this)
         val personalDictionary = PersonalDictionaryManager(this)
         val dialectManager = DialectPackManager(this)
+        val metricsManager = TypingMetricsManager(this)
 
         val initialPage = when (intent.getStringExtra("target_page")) {
             "CROSS_DEVICE" -> SettingsPage.CROSS_DEVICE
             "THEMES" -> SettingsPage.THEMES
             "PERSONAL_DICT" -> SettingsPage.PERSONAL_DICT
+            "METRICS" -> SettingsPage.METRICS
             else -> SettingsPage.MAIN
         }
 
@@ -183,6 +187,7 @@ class SettingsActivity : ComponentActivity() {
             val tasks by todoManager.tasks.collectAsState()
             val personalState by personalDictionary.state.collectAsState()
             val dialectState by dialectManager.state.collectAsState()
+            val metricsState by metricsManager.snapshot.collectAsState()
 
             var currentPage by remember { mutableStateOf(initialPage) }
             var screenshotSynced by remember { mutableStateOf(ClipboardHistoryManager.hasScreenshotPermission(this@SettingsActivity)) }
@@ -503,6 +508,14 @@ class SettingsActivity : ComponentActivity() {
                                             valueText = if (settings.remoteHostIp.isNotEmpty()) settings.remoteHostIp else "Wi-Fi LAN",
                                             onClick = { currentPage = SettingsPage.CROSS_DEVICE },
                                         )
+                                        SettingsRowDivider()
+                                        SettingsNavRow(
+                                            icon = Icons.Outlined.AutoAwesome,
+                                            title = "Language Level & Stats",
+                                            subtitle = "CEFR estimation, vocabulary richness & typing insights",
+                                            valueText = metricsState.cefrLevel,
+                                            onClick = { currentPage = SettingsPage.METRICS },
+                                        )
                                     }
 
                                     SettingsGroup(title = "Typing & Comfort") {
@@ -703,7 +716,8 @@ class SettingsActivity : ComponentActivity() {
                                                     "• Glide Up on Shift (⇧): Switch between Word Glide and Char-by-Char Glide.\n" +
                                                     "• Hold Spacebar (1s): Switch between French AZERTY & English QWERTY.\n" +
                                                     "• Slide Spacebar: Move the cursor left/right or up/down with the 2D dot indicator.\n" +
-                                                    "• Hold Emoji (☺): Open Clipboard, To-Do, Navigate, Media, Remote, Split/1-Hand/Float & Settings.\n" +
+                                                    "• Hold Emoji (☺): Open Clipboard, To-Do, Productivity Suite (Notes, Fancy, FX, OCR), Navigate, Media, Remote, Split/1-Hand/Float & Settings.\n" +
+                                                    "• Rambler Voice Mode: Toggle Rambler in Voice Typing to dictate continuously with automatic cleanup.\n" +
                                                     "• Discord Emoji Shortcodes: Type :fire:, :heart:, :joy: for instant inline emoji completion.\n" +
                                                     "• Glide Toolbar (← / →): Swipe left or right anywhere on the top toolbar to Undo or Redo.\n" +
                                                     "• Shift on Selection: Select text and tap Shift (⇧) to cycle its case.\n" +
@@ -1358,6 +1372,69 @@ class SettingsActivity : ComponentActivity() {
                                         ) {
                                             Text("Reset Personal Dictionary")
                                         }
+                                    }
+                                }
+
+                                SettingsPage.METRICS -> {
+                                    SettingsGroup(title = "Estimated Language Level") {
+                                        Column(
+                                            modifier = Modifier.padding(16.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            Text(
+                                                text = metricsState.cefrLevel,
+                                                fontSize = 22.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = SettingsAccentBlue,
+                                            )
+                                            Text(
+                                                text = "Estimated from ${metricsState.totalWords} words typed on-device (never uploaded). Type at least 15 words for a reliable baseline.",
+                                                fontSize = 12.5.sp,
+                                                color = SettingsTextSecondary,
+                                            )
+                                        }
+                                    }
+                                    SettingsGroup(title = "Vocabulary & Input Breakdown") {
+                                        SettingsNavRow(
+                                            icon = Icons.Outlined.Book,
+                                            title = "Unique Vocabulary Tracked",
+                                            valueText = "${metricsState.uniqueCount}",
+                                            onClick = {},
+                                        )
+                                        SettingsRowDivider()
+                                        SettingsNavRow(
+                                            icon = Icons.Outlined.AutoAwesome,
+                                            title = "Vocabulary Richness",
+                                            valueText = "${"%.1f".format(metricsState.vocabularyRichnessPct)}%",
+                                            onClick = {},
+                                        )
+                                        SettingsRowDivider()
+                                        SettingsNavRow(
+                                            icon = Icons.Outlined.Keyboard,
+                                            title = "Average Word Length",
+                                            valueText = "${"%.1f".format(metricsState.averageWordLength)} chars",
+                                            onClick = {},
+                                        )
+                                        SettingsRowDivider()
+                                        SettingsNavRow(
+                                            icon = Icons.Outlined.Tag,
+                                            title = "Complex Words (7+ chars)",
+                                            valueText = "${metricsState.complexWords} (${"%.1f".format(metricsState.complexWordRatioPct)}%)",
+                                            onClick = {},
+                                        )
+                                        SettingsRowDivider()
+                                        SettingsNavRow(
+                                            icon = Icons.Outlined.Gesture,
+                                            title = "Glide Words / Voice Words",
+                                            valueText = "${metricsState.swipeWords} / ${metricsState.voiceWords}",
+                                            onClick = {},
+                                        )
+                                    }
+                                    OutlinedButton(
+                                        onClick = { metricsManager.resetMetrics() },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Text("Reset Language Stats")
                                     }
                                 }
 

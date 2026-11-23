@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-beta.1] - 2026-11-23
+
+### Added
+- **Rambler Voice Mode** (`RambleTextCleanup`, `VoiceTypingPanel`): Toggleable continuous long-form dictation with hesitation/stutter removal, spoken line/paragraph breaks, auto-capitalization, and one-tap **Clean & Insert**.
+- **Language Level Metrics** (`TypingMetricsManager`, `SettingsPage.METRICS`): On-device CEFR estimation (`A1`–`C2`), vocabulary richness percentage, average word length, complex word count, and glide/voice typing stats.
+- **On-Device OCR Text Scanner** (`OcrScannerActivity` + ML Kit Text Recognition): Capture via camera, gallery, or latest clipboard screenshot/image and insert recognized text directly into the active text field.
+- **Fancy Text Generator** (`FancyTextTransformer`): 9 Unicode font styles (`Bold Serif`, `Italic`, `Bold Script`, `Fraktur`, `Double-Struck`, `Monospace`, `Circled`, `Small Caps`, `Fullwidth`) usable both as live typing styles and instant style previews.
+- **Built-in Note Taker** (`NotesManager`): Quick multi-note scratchpad panel (`PanelMode.SUITE`) with pinning, title/body editing, and one-tap snippet insertion.
+- **Currency Converter** (`CurrencyConverter`): Offline-first calculator supporting `XOF`, `EUR`, `USD`, `GBP`, `CAD`, `CHF`, `XAF`, `NGN`, `GHS`, `MAD`, `JPY`, `CNY` with optional live rate refresh and one-tap result insertion.
+
 ## [1.3.0-beta.2] - 2026-11-23
 
 ### Added

@@ -41,6 +41,8 @@ internal fun VoiceTypingPanel(
     voiceUiState: VoiceUiState,
     onStartOrStop: () -> Unit,
     onToggleLanguage: () -> Unit,
+    onToggleRamblerMode: () -> Unit = {},
+    onInsertRambleCleaned: () -> Unit = {},
     onLaunchSystemVoice: () -> Unit,
     onBackToKeyboard: () -> Unit,
     onBackspace: () -> Unit,
@@ -61,12 +63,26 @@ internal fun VoiceTypingPanel(
         verticalArrangement = Arrangement.SpaceBetween,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Top header strip: clickable language toggle pill
+        // Top header strip: Rambler toggle + language toggle + Clean & Insert button
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            CategoryChip(
+                label = if (voiceUiState.ramblerMode) "Rambler: ON" else "Rambler",
+                active = voiceUiState.ramblerMode,
+                onClick = onToggleRamblerMode,
+            )
+            val hasRambleDraft = voiceUiState.ramblerMode &&
+                (voiceUiState.ramblerBuffer.isNotBlank() || voiceUiState.partialText.isNotBlank())
+            if (hasRambleDraft) {
+                CategoryChip(
+                    label = "Clean & Insert",
+                    active = true,
+                    onClick = onInsertRambleCleaned,
+                )
+            }
             Surface(
                 color = PillKeyBgColor,
                 shape = RoundedCornerShape(50),
@@ -116,8 +132,15 @@ internal fun VoiceTypingPanel(
                 }
             }
             Spacer(modifier = Modifier.height(10.dp))
-            val streamedDisplay = if (voiceUiState.partialText.isNotEmpty()) {
-                formatLeftTrimmedVoiceStream(voiceUiState.partialText)
+            val rawCombined = if (voiceUiState.ramblerMode) {
+                listOf(voiceUiState.ramblerBuffer, voiceUiState.partialText)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" ")
+            } else {
+                voiceUiState.partialText
+            }
+            val streamedDisplay = if (rawCombined.isNotEmpty()) {
+                formatLeftTrimmedVoiceStream(rawCombined)
             } else {
                 ""
             }

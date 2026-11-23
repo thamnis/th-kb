@@ -44,9 +44,14 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.thamnis.thkb.data.AssetRepository
 import com.thamnis.thkb.data.ClipboardEntry
 import com.thamnis.thkb.data.ClipboardHistoryManager
+import com.thamnis.thkb.data.CurrencyConverter
 import com.thamnis.thkb.data.DialectPackManager
+import com.thamnis.thkb.data.NotesManager
 import com.thamnis.thkb.data.PersonalDictionaryManager
 import com.thamnis.thkb.data.TodoListManager
+import com.thamnis.thkb.data.TypingMetricsManager
+import com.thamnis.thkb.engine.FancyFontStyle
+import com.thamnis.thkb.engine.FancyTextTransformer
 import com.thamnis.thkb.engine.KeyCenterPoint
 import com.thamnis.thkb.engine.SuggestionCandidate
 import com.thamnis.thkb.engine.SuggestionEngine
@@ -79,6 +84,9 @@ class ThKbInputMethodService :
     private lateinit var todoManager: TodoListManager
     private lateinit var personalDictionary: PersonalDictionaryManager
     private lateinit var dialectManager: DialectPackManager
+    private lateinit var notesManager: NotesManager
+    private lateinit var currencyConverter: CurrencyConverter
+    private lateinit var metricsManager: TypingMetricsManager
     private data class PendingReplacement(
         val originalPrefix: String,
         val replacedText: String,
@@ -118,6 +126,7 @@ class ThKbInputMethodService :
     private var floatingSurfaceBoundsPx: Rect? = null
     private var navSelectionAnchor: Int? = null
     private var liveMediaSnapshot by mutableStateOf(MediaPlayerSnapshot())
+    private var activeFancyStyle by mutableStateOf(FancyFontStyle.NORMAL)
 
     override fun onCreate() {
         super.onCreate()
@@ -129,6 +138,9 @@ class ThKbInputMethodService :
         todoManager = TodoListManager(this)
         personalDictionary = PersonalDictionaryManager(this)
         dialectManager = DialectPackManager(this)
+        notesManager = NotesManager(this)
+        currencyConverter = CurrencyConverter(this)
+        metricsManager = TypingMetricsManager(this)
         suggestionEngine = SuggestionEngine(this)
         suggestionEngine.syncPersonalDictionary(personalDictionary.state.value, personalDictionary.toJson())
         suggestionEngine.syncDialectOverlay(dialectManager.buildMergedOverlayJson())
@@ -176,6 +188,9 @@ class ThKbInputMethodService :
                 val personalState by personalDictionary.state.collectAsState()
                 val dialectState by dialectManager.state.collectAsState()
                 val voiceUiState by voiceInputManager.state.collectAsState()
+                val notesList by notesManager.notes.collectAsState()
+                val fxRates by currencyConverter.ratesUsdBase.collectAsState()
+                val metricsSnapshot by metricsManager.snapshot.collectAsState()
                 val effectiveLayoutId = subtypeLayoutOverride ?: settings.layoutId
                 val composeContext = LocalContext.current
                 val activePalette = remember(settings.themeId, composeContext) {
@@ -214,6 +229,13 @@ class ThKbInputMethodService :
                         pendingVoiceStartAfterPermission = false
                         kotlinx.coroutines.delay(120L)
                         commitVoiceResult(spoken)
+                    }
+                }
+
+                LaunchedEffect(Unit) {
+                    OcrScanBridge.results.collect { scannedText ->
+                        kotlinx.coroutines.delay(120L)
+                        commitTextSafe(scannedText, coalesceUndo = false)
                     }
                 }
 
@@ -339,6 +361,7 @@ class ThKbInputMethodService :
                             val boost = if (candidate.isLiteral) 10 else 3
                             personalDictionary.learnWord(prevWord, candidate.word, boost)
                             suggestionEngine.learnWord(prevWord, candidate.word, boost)
+                            metricsManager.recordWord(candidate.word)
                         }
                         // Manually committed suggestion must not be removed/reverted by Backspace
                         pendingReplacement = null
@@ -445,6 +468,7 @@ class ThKbInputMethodService :
                                     val prevWord = ctxWords.lastOrNull().orEmpty()
                                     personalDictionary.learnWord(prevWord, typedPrefix, 2)
                                     suggestionEngine.learnWord(prevWord, typedPrefix, 2)
+                                    metricsManager.recordWord(typedPrefix)
                                 }
                                 pendingReplacement = null
                                 suppressedAutoReplacePrefix = null
@@ -453,10 +477,15 @@ class ThKbInputMethodService :
                         } else {
                             pendingReplacement = null
                             suppressedAutoReplacePrefix = null
-                            val payload = if (wasPostSwipeNoSpace && text.length == 1 && text[0].isLetterOrDigit()) {
+                            val basePayload = if (wasPostSwipeNoSpace && text.length == 1 && text[0].isLetterOrDigit()) {
                                 " $text"
                             } else {
                                 text
+                            }
+                            val payload = if (activeFancyStyle != FancyFontStyle.NORMAL) {
+                                FancyTextTransformer.transform(basePayload, activeFancyStyle)
+                            } else {
+                                basePayload
                             }
                             commitTextSafe(payload)
                         }
@@ -646,6 +675,47 @@ class ThKbInputMethodService :
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         startActivity(intent)
                     },
+                    notes = notesList,
+                    activeFancyStyle = activeFancyStyle,
+                    currencyConverter = currencyConverter,
+                    ratesMap = fxRates,
+                    metricsSnapshot = metricsSnapshot,
+                    onAddNote = { title, body ->
+                        notesManager.addNote(title, body)
+                    },
+                    onTogglePinNote = { id ->
+                        notesManager.togglePin(id)
+                    },
+                    onDeleteNote = { id ->
+                        notesManager.deleteNote(id)
+                    },
+                    onSelectFancyStyle = { style ->
+                        activeFancyStyle = style
+                    },
+                    onToggleRamblerMode = {
+                        voiceInputManager.setRamblerMode(!voiceUiState.ramblerMode)
+                    },
+                    onInsertRambleCleaned = {
+                        val cleanedText = voiceInputManager.consumeRamblerBuffer(cleaned = true)
+                        if (cleanedText.isNotBlank()) {
+                            commitVoiceResult(cleanedText)
+                        }
+                        voiceInputManager.cancel()
+                    },
+                    onLaunchOcr = { initialUri ->
+                        val intent = Intent(this@ThKbInputMethodService, OcrScannerActivity::class.java)
+                            .apply {
+                                if (initialUri != null) putExtra("initial_uri", initialUri)
+                            }
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
+                    },
+                    onOpenMetricsPage = {
+                        val intent = Intent(this@ThKbInputMethodService, SettingsActivity::class.java)
+                            .putExtra("target_page", "METRICS")
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
+                    },
                 )
             }
         }
@@ -774,6 +844,9 @@ class ThKbInputMethodService :
         }
         pendingReplacement = PendingReplacement(originalPrefix = "", replacedText = payload)
         swipeAlternativesTail = null
+        if (inputContext != InputContext.PASSWORD && inputContext != InputContext.NUMBER) {
+            metricsManager.recordPhrase(cleaned, fromVoice = true)
+        }
         playFeedback(haptics = settings.hapticsEnabled, sound = settings.soundEnabled)
         val effectiveLayoutId = subtypeLayoutOverride ?: settings.layoutId
         refreshSuggestions(effectiveLayoutId, settings)
@@ -812,6 +885,9 @@ class ThKbInputMethodService :
         }
         val committed = if (appendTrailingSpace) "$baseCommitted " else baseCommitted
         commitTextSafe(committed, coalesceUndo = false)
+        if (inputContext != InputContext.PASSWORD && inputContext != InputContext.NUMBER) {
+            metricsManager.recordWord(winner.word, fromSwipe = true)
+        }
         pendingReplacement = PendingReplacement(
             originalPrefix = "",
             replacedText = committed,

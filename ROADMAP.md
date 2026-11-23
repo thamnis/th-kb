@@ -112,13 +112,13 @@
 
 ## `v2.0` — Intelligence & Productivity Suite
 
-- [ ] **Rambler mode** (continuous long-form voice dictation & structured text cleanup)
-- [ ] **Language level metrics** (user vocabulary richness, CEFR level estimation, and typing stats)
-- [ ] **OCR text scanner** (camera/screenshot optical character recognition directly into the active text field)
-- [ ] **Fancy text generator** (live Unicode font styles: serif, script, fraktur, monospace, circled, small caps)
-- [ ] **Built-in Note taker** (quick scratchpad notes panel inside the keyboard)
+- [x] **Rambler mode** (continuous long-form voice dictation & structured text cleanup) *(shipped in v2.0.0-beta.1)*
+- [x] **Language level metrics** (user vocabulary richness, CEFR level estimation, and typing stats) *(shipped in v2.0.0-beta.1)*
+- [x] **OCR text scanner** (camera/screenshot optical character recognition directly into the active text field) *(shipped in v2.0.0-beta.1)*
+- [x] **Fancy text generator** (live Unicode font styles: serif, script, fraktur, monospace, circled, small caps) *(shipped in v2.0.0-beta.1)*
+- [x] **Built-in Note taker** (quick scratchpad notes panel inside the keyboard) *(shipped in v2.0.0-beta.1)*
 - [x] **Built-in Animated Todo list** *(shipped in v0.3)*
-- [ ] **Currency converter** (inline currency conversion calculator in the keyboard utility bar)
+- [x] **Currency converter** (inline currency conversion calculator in the keyboard utility bar) *(shipped in v2.0.0-beta.1)*
 
 ### Backlog — After `v2.0`
 

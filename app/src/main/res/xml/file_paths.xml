@@ -3,4 +3,7 @@
     <files-path
         name="clipboard_media"
         path="clipboard_media/" />
+    <files-path
+        name="ocr_cache"
+        path="ocr_cache/" />
 </paths>

@@ -29,7 +29,59 @@ data class VoiceUiState(
     val partialText: String = "",
     val rmsDb: Float = 0f,
     val errorMessage: String? = null,
+    val ramblerMode: Boolean = false,
+    val ramblerBuffer: String = "",
 )
+
+/**
+ * Cleans up continuous long-form "Rambler" dictation by stripping hesitation fillers,
+ * deduplicating stutters, honoring spoken line/paragraph breaks, and fixing punctuation.
+ */
+object RambleTextCleanup {
+    private val FILLERS = Regex("""\b(um+|uh+|er+|ah+|euh+|heu+|ben|voilà quoi)\b""", RegexOption.IGNORE_CASE)
+    private val MULTI_SPACE = Regex("""[ \t]{2,}""")
+    private val STUTTER = Regex("""\b([a-zA-Z\u00C0-\u017F]+)\s+\1\b""", RegexOption.IGNORE_CASE)
+
+    fun clean(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return ""
+        var text = trimmed
+            .replace(Regex("""\b(new paragraph|nouveau paragraphe)\b""", RegexOption.IGNORE_CASE), "\n\n")
+            .replace(Regex("""\b(new line|à la ligne|ligne suivante)\b""", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("""\b(period|point final|full stop)\b""", RegexOption.IGNORE_CASE), ".")
+            .replace(Regex("""\b(comma|virgule)\b""", RegexOption.IGNORE_CASE), ",")
+            .replace(FILLERS, "")
+        text = STUTTER.replace(text, "$1")
+        text = text.replace(MULTI_SPACE, " ")
+            .replace(" ,", ",")
+            .replace(" .", ".")
+            .replace(Regex(""" *\n *"""), "\n")
+            .trim()
+
+        // Capitalize start of each sentence or paragraph
+        val out = StringBuilder(text.length + 2)
+        var capNext = true
+        for (ch in text) {
+            if (capNext && ch.isLetter()) {
+                out.append(ch.titlecaseChar())
+                capNext = false
+            } else {
+                out.append(ch)
+                if (ch == '.' || ch == '!' || ch == '?' || ch == '\n') {
+                    capNext = true
+                } else if (!ch.isWhitespace()) {
+                    capNext = false
+                }
+            }
+        }
+        val finalStr = out.toString().trim()
+        return if (finalStr.isNotEmpty() && finalStr.last().isLetterOrDigit()) {
+            "$finalStr."
+        } else {
+            finalStr
+        }
+    }
+}
 
 /**
  * Manages speech recognition for th-kb on the Main Looper.
@@ -55,9 +107,28 @@ class VoiceInputManager(
 
     companion object {
         private const val VOICE_MAX_SILENCE_WAIT_MS = 14_000L
+        private const val RAMBLER_MAX_SILENCE_WAIT_MS = 60_000L
         private const val COMPLETE_SILENCE_EXTRA_MS = 7_000L
         private const val POSSIBLY_COMPLETE_SILENCE_EXTRA_MS = 5_000L
         private const val MIN_SPEECH_LENGTH_EXTRA_MS = 12_000L
+    }
+
+    fun setRamblerMode(enabled: Boolean) {
+        _state.value = _state.value.copy(
+            ramblerMode = enabled,
+            ramblerBuffer = if (!enabled) "" else _state.value.ramblerBuffer,
+        )
+    }
+
+    fun consumeRamblerBuffer(cleaned: Boolean = true): String {
+        val combined = listOf(_state.value.ramblerBuffer, _state.value.partialText)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .trim()
+        val result = if (cleaned) RambleTextCleanup.clean(combined) else combined
+        accumulatedSessionWords = ""
+        _state.value = _state.value.copy(ramblerBuffer = "", partialText = "")
+        return result
     }
 
     @Volatile
@@ -260,6 +331,7 @@ class VoiceInputManager(
                     .removePrefix(accumulatedSessionWords)
                     .trim()
                 val finalSpoken = best.ifEmpty { currentSegmentPartial }
+                val isRambler = _state.value.ramblerMode
                 if (finalSpoken.isNotEmpty()) {
                     lastVoiceActivityMs = SystemClock.uptimeMillis()
                     accumulatedSessionWords = if (accumulatedSessionWords.isEmpty()) {
@@ -267,24 +339,39 @@ class VoiceInputManager(
                     } else {
                         "$accumulatedSessionWords $finalSpoken"
                     }
-                    onCommittedText(finalSpoken)
+                    if (isRambler) {
+                        val nextBuf = if (_state.value.ramblerBuffer.isEmpty()) {
+                            finalSpoken
+                        } else {
+                            "${_state.value.ramblerBuffer} $finalSpoken"
+                        }
+                        _state.value = _state.value.copy(ramblerBuffer = nextBuf, partialText = "")
+                    } else {
+                        onCommittedText(finalSpoken)
+                    }
                 }
 
                 val elapsedSilence = SystemClock.uptimeMillis() - lastVoiceActivityMs
-                if (!userRequestedStop && elapsedSilence < VOICE_MAX_SILENCE_WAIT_MS) {
+                val maxWait = if (isRambler) RAMBLER_MAX_SILENCE_WAIT_MS else VOICE_MAX_SILENCE_WAIT_MS
+                if (!userRequestedStop && elapsedSilence < maxWait) {
                     mainHandler.removeCallbacksAndMessages(null)
                     mainHandler.postDelayed({
                         if (!userRequestedStop) {
                             startListeningOnMain(languageTag, useUnboundDefault, isContinuation = true)
                         }
                     }, 260L)
-                } else {
+                } else if (!isRambler) {
                     _state.value = _state.value.copy(
                         panelVisible = false,
                         isListening = false,
                         partialText = "",
                         rmsDb = 0f,
                         errorMessage = null,
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        isListening = false,
+                        rmsDb = 0f,
                     )
                 }
             }
@@ -303,7 +390,9 @@ class VoiceInputManager(
                         "$accumulatedSessionWords $partial"
                     }
                     _state.value = _state.value.copy(partialText = combined)
-                    onPartialText(partial)
+                    if (!_state.value.ramblerMode) {
+                        onPartialText(partial)
+                    }
                 }
             }
 

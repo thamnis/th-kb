@@ -71,6 +71,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentPaste
@@ -166,9 +167,13 @@ import androidx.compose.ui.zIndex
 import androidx.emoji2.emojipicker.EmojiPickerView
 import com.thamnis.thkb.data.AssetRepository
 import com.thamnis.thkb.data.ClipboardEntry
+import com.thamnis.thkb.data.CurrencyConverter
 import com.thamnis.thkb.data.EmojiSection
 import com.thamnis.thkb.data.KaomojiItem
+import com.thamnis.thkb.data.ScratchNote
 import com.thamnis.thkb.data.TodoTask
+import com.thamnis.thkb.data.TypingMetricsSnapshot
+import com.thamnis.thkb.engine.FancyFontStyle
 import com.thamnis.thkb.engine.KeyCenterPoint
 import com.thamnis.thkb.engine.SuggestionCandidate
 import com.thamnis.thkb.engine.SuggestionEngine
@@ -303,6 +308,19 @@ fun KeyboardRoot(
     onEnableMediaSync: () -> Unit = {},
     onSelectRemoteHost: (String, Int) -> Unit = { _, _ -> },
     onOpenCrossDeviceSetup: () -> Unit = onOpenSettings,
+    notes: List<ScratchNote> = emptyList(),
+    activeFancyStyle: FancyFontStyle = FancyFontStyle.NORMAL,
+    currencyConverter: CurrencyConverter = CurrencyConverter(),
+    ratesMap: Map<String, Double> = emptyMap(),
+    metricsSnapshot: TypingMetricsSnapshot = TypingMetricsSnapshot(),
+    onAddNote: (String, String) -> Unit = { _, _ -> },
+    onTogglePinNote: (String) -> Unit = {},
+    onDeleteNote: (String) -> Unit = {},
+    onSelectFancyStyle: (FancyFontStyle) -> Unit = {},
+    onToggleRamblerMode: () -> Unit = {},
+    onInsertRambleCleaned: () -> Unit = {},
+    onLaunchOcr: (String?) -> Unit = {},
+    onOpenMetricsPage: () -> Unit = onOpenSettings,
 ) {
     val context = LocalContext.current
     val activePalette = remember(themeId, context) { resolveKbPalette(themeId, context) }
@@ -386,6 +404,19 @@ fun KeyboardRoot(
         onEnableMediaSync = onEnableMediaSync,
         onSelectRemoteHost = onSelectRemoteHost,
         onOpenCrossDeviceSetup = onOpenCrossDeviceSetup,
+        notes = notes,
+        activeFancyStyle = activeFancyStyle,
+        currencyConverter = currencyConverter,
+        ratesMap = ratesMap,
+        metricsSnapshot = metricsSnapshot,
+        onAddNote = onAddNote,
+        onTogglePinNote = onTogglePinNote,
+        onDeleteNote = onDeleteNote,
+        onSelectFancyStyle = onSelectFancyStyle,
+        onToggleRamblerMode = onToggleRamblerMode,
+        onInsertRambleCleaned = onInsertRambleCleaned,
+        onLaunchOcr = onLaunchOcr,
+        onOpenMetricsPage = onOpenMetricsPage,
     )
     }
 }
@@ -470,6 +501,19 @@ private fun KeyboardRootContent(
     onEnableMediaSync: () -> Unit = {},
     onSelectRemoteHost: (String, Int) -> Unit = { _, _ -> },
     onOpenCrossDeviceSetup: () -> Unit = {},
+    notes: List<ScratchNote> = emptyList(),
+    activeFancyStyle: FancyFontStyle = FancyFontStyle.NORMAL,
+    currencyConverter: CurrencyConverter = CurrencyConverter(),
+    ratesMap: Map<String, Double> = emptyMap(),
+    metricsSnapshot: TypingMetricsSnapshot = TypingMetricsSnapshot(),
+    onAddNote: (String, String) -> Unit = { _, _ -> },
+    onTogglePinNote: (String) -> Unit = {},
+    onDeleteNote: (String) -> Unit = {},
+    onSelectFancyStyle: (FancyFontStyle) -> Unit = {},
+    onToggleRamblerMode: () -> Unit = {},
+    onInsertRambleCleaned: () -> Unit = {},
+    onLaunchOcr: (String?) -> Unit = {},
+    onOpenMetricsPage: () -> Unit = {},
 ) {
     var shiftState by remember(inputSessionKey, autoCapOnOpen) {
         mutableStateOf(if (autoCapOnOpen) ShiftState.ONCE else ShiftState.OFF)
@@ -534,17 +578,18 @@ private fun KeyboardRootContent(
         when (toolIdx) {
             0 -> panelMode = PanelMode.CLIPBOARD
             1 -> panelMode = PanelMode.TODO
-            2 -> panelMode = PanelMode.NAV
-            3 -> panelMode = PanelMode.MEDIA
-            4 -> panelMode = PanelMode.REMOTE
-            5 -> onChangeErgonomicMode(
+            2 -> panelMode = PanelMode.SUITE
+            3 -> panelMode = PanelMode.NAV
+            4 -> panelMode = PanelMode.MEDIA
+            5 -> panelMode = PanelMode.REMOTE
+            6 -> onChangeErgonomicMode(
                 if (ergonomicMode == KbSettings.ERGONOMIC_SPLIT) {
                     KbSettings.ERGONOMIC_NORMAL
                 } else {
                     KbSettings.ERGONOMIC_SPLIT
                 },
             )
-            6 -> onChangeErgonomicMode(
+            7 -> onChangeErgonomicMode(
                 if (ergonomicMode == KbSettings.ERGONOMIC_ONE_HAND_RIGHT ||
                     ergonomicMode == KbSettings.ERGONOMIC_ONE_HAND_LEFT
                 ) {
@@ -553,14 +598,14 @@ private fun KeyboardRootContent(
                     KbSettings.ERGONOMIC_ONE_HAND_RIGHT
                 },
             )
-            7 -> onChangeErgonomicMode(
+            8 -> onChangeErgonomicMode(
                 if (ergonomicMode == KbSettings.ERGONOMIC_FLOATING) {
                     KbSettings.ERGONOMIC_NORMAL
                 } else {
                     KbSettings.ERGONOMIC_FLOATING
                 },
             )
-            8 -> onOpenSettings()
+            9 -> onOpenSettings()
         }
     }
 
@@ -932,6 +977,25 @@ private fun KeyboardRootContent(
                                 onKeyFeedback = onKeyFeedback,
                             )
                         }
+                        PanelMode.SUITE -> {
+                            ProductivitySuitePanel(
+                                panelHeightDp = 250f,
+                                notes = notes,
+                                activeFancyStyle = activeFancyStyle,
+                                currencyConverter = currencyConverter,
+                                ratesMap = ratesMap,
+                                metricsSnapshot = metricsSnapshot,
+                                latestImageClipUri = clipboardEntries.firstOrNull { it.isRichMedia }?.mediaUri,
+                                onAddNote = onAddNote,
+                                onTogglePinNote = onTogglePinNote,
+                                onDeleteNote = onDeleteNote,
+                                onSelectFancyStyle = onSelectFancyStyle,
+                                onCommitText = onCommitText,
+                                onLaunchOcr = onLaunchOcr,
+                                onOpenMetricsPage = onOpenMetricsPage,
+                                onKeyFeedback = onKeyFeedback,
+                            )
+                        }
                         PanelMode.VOICE -> {
                             VoiceTypingPanel(
                                 voiceUiState = voiceUiState,
@@ -946,6 +1010,14 @@ private fun KeyboardRootContent(
                                 onToggleLanguage = {
                                     onKeyFeedback()
                                     onToggleVoiceLanguage()
+                                },
+                                onToggleRamblerMode = {
+                                    onKeyFeedback()
+                                    onToggleRamblerMode()
+                                },
+                                onInsertRambleCleaned = {
+                                    onKeyFeedback()
+                                    onInsertRambleCleaned()
                                 },
                                 onLaunchSystemVoice = {
                                     onKeyFeedback()
@@ -1417,24 +1489,21 @@ private fun KeyboardRootContent(
                 listOf(
                     Triple(0, Icons.Outlined.ContentPaste, "Clipboard"),
                     Triple(1, Icons.Outlined.Checklist, "To-Do"),
-                    Triple(2, Icons.Outlined.OpenWith, "Navigate"),
-                    Triple(3, Icons.Outlined.MusicNote, "Media"),
-                    Triple(4, Icons.Outlined.Mouse, "Remote"),
+                    Triple(2, Icons.Outlined.AutoAwesome, "Suite (Notes, Fancy, FX, OCR)"),
+                    Triple(3, Icons.Outlined.OpenWith, "Navigate"),
+                    Triple(4, Icons.Outlined.MusicNote, "Media"),
                 ),
                 listOf(
-                    Triple(5, Icons.Outlined.ViewColumn, "Split"),
-                    Triple(6, Icons.Outlined.Smartphone, "1-Hand"),
-                    Triple(7, Icons.Outlined.PictureInPictureAlt, "Float"),
-                    Triple(8, Icons.Outlined.Settings, "Settings"),
+                    Triple(5, Icons.Outlined.Mouse, "Remote"),
+                    Triple(6, Icons.Outlined.ViewColumn, "Split"),
+                    Triple(7, Icons.Outlined.Smartphone, "1-Hand"),
+                    Triple(8, Icons.Outlined.PictureInPictureAlt, "Float"),
+                    Triple(9, Icons.Outlined.Settings, "Settings"),
                 ),
             )
             val selectedIdx = toolsPopup.selectedIndex
-            val targetCol = if (selectedIdx in 0..8) {
-                if (selectedIdx < 5) selectedIdx.toFloat() else (selectedIdx - 5).toFloat()
-            } else {
-                0f
-            }
-            val targetRow = if (selectedIdx in 5..8) 1f else 0f
+            val targetCol = if (selectedIdx in 0..9) (selectedIdx % 5).toFloat() else 0f
+            val targetRow = if (selectedIdx in 5..9) 1f else 0f
             val bubbleCol by animateFloatAsState(
                 targetValue = targetCol,
                 animationSpec = spring(dampingRatio = 0.72f, stiffness = 650f),
@@ -1456,7 +1525,7 @@ private fun KeyboardRootContent(
                     .border(1.dp, PillKeyBgColor, RoundedCornerShape(20.dp)),
             ) {
                 Box(modifier = Modifier.padding(8.dp)) {
-                    if (selectedIdx in 0..8) {
+                    if (selectedIdx in 0..9) {
                         Box(
                             modifier = Modifier
                                 .offset {
@@ -1686,6 +1755,7 @@ private fun ToolbarRow(
         PanelMode.NAV,
         PanelMode.MEDIA,
         PanelMode.REMOTE,
+        PanelMode.SUITE,
     )
 
     val resizeArrowRotation by animateFloatAsState(
@@ -2237,11 +2307,10 @@ private fun TouchKeyGrid(
                                         val padPx = with(density) { 8.dp.toPx() }
                                         val popupTopInGrid = toolsPopup.anchorY - cellStepPx * 2f - with(density) { 18.dp.toPx() }
                                         val row = if (localPos.y < popupTopInGrid + cellStepPx) 0 else 1
-                                        val maxCol = if (row == 0) 4 else 3
                                         val col = ((localPos.x - (toolsPopup.anchorX + padPx)) / cellStepPx)
                                             .toInt()
-                                            .coerceIn(0, maxCol)
-                                        val idx = if (row == 0) col else 5 + col
+                                            .coerceIn(0, 4)
+                                        val idx = (row * 5 + col).coerceIn(0, 9)
                                         if (idx != toolsPopup.selectedIndex) {
                                             latestOnShowEmojiToolsPopup(toolsPopup.copy(selectedIndex = idx))
                                         }
@@ -2484,7 +2553,7 @@ private fun TouchKeyGrid(
                                 val popup = latestPopup
                                 val normalizedKey = if (pointer.keyId == "SPACE_R") "SPACE" else pointer.keyId
                                 if (pointer.keyId == "EMOJI_KEY" && toolsPopup != null) {
-                                    if (toolsPopup.selectedIndex in 0..8) {
+                                    if (toolsPopup.selectedIndex in 0..9) {
                                         latestOnSelectEmojiTool(toolsPopup.selectedIndex)
                                     }
                                 } else if (popup != null) {

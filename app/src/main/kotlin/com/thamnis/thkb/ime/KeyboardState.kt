@@ -27,6 +27,7 @@ enum class PanelMode {
     NAV,
     MEDIA,
     REMOTE,
+    SUITE,
 }
 
 enum class NavUnit {

@@ -45,6 +45,12 @@
             android:exported="false"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
+        <activity
+            android:name=".ime.OcrScannerActivity"
+            android:exported="false"
+            android:label="OCR Text Scanner"
+            android:theme="@style/Theme.ThKb" />
+
         <service
             android:name=".ime.ThKbInputMethodService"
             android:exported="true"

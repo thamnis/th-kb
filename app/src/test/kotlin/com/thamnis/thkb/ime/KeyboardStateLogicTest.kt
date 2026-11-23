@@ -213,4 +213,50 @@ class KeyboardStateLogicTest {
         assertFalse(com.thamnis.thkb.data.PersonalDictionaryManager.isCommonFillerWord("abidjan"))
         assertFalse(com.thamnis.thkb.data.PersonalDictionaryManager.isCommonFillerWord("thamnis"))
     }
+
+    @Test
+    fun fancyTextTransformerMapsStylesCleanly() {
+        assertEquals(
+            "𝐇𝐞𝐥𝐥𝐨",
+            com.thamnis.thkb.engine.FancyTextTransformer.transform(
+                "Hello",
+                com.thamnis.thkb.engine.FancyFontStyle.BOLD_SERIF,
+            ),
+        )
+        assertEquals(
+            "Ⓐⓑ①",
+            com.thamnis.thkb.engine.FancyTextTransformer.transform(
+                "Ab1",
+                com.thamnis.thkb.engine.FancyFontStyle.CIRCLED,
+            ),
+        )
+        assertEquals(
+            "Aʙᴄ",
+            com.thamnis.thkb.engine.FancyTextTransformer.transform(
+                "Abc",
+                com.thamnis.thkb.engine.FancyFontStyle.SMALL_CAPS,
+            ),
+        )
+    }
+
+    @Test
+    fun currencyConverterComputesExpectedParity() {
+        val conv = com.thamnis.thkb.data.CurrencyConverter()
+        val xof = conv.convert(10.0, "EUR", "XOF")
+        assertTrue(xof > 6000.0 && xof < 7000.0)
+        assertEquals(10.0, conv.convert(10.0, "USD", "USD"), 0.001)
+    }
+
+    @Test
+    fun rambleCleanupStripsFillersAndCapitalizes() {
+        val cleaned = RambleTextCleanup.clean("um hello hello world new line euh this is fine")
+        assertEquals("Hello world\nThis is fine.", cleaned)
+    }
+
+    @Test
+    fun cefrLevelProgressionEvaluatesRichness() {
+        assertEquals("Evaluating…", com.thamnis.thkb.data.TypingMetricsManager.estimateCefrLevel(5, 5, 4.0, 0.0))
+        val cLevel = com.thamnis.thkb.data.TypingMetricsManager.estimateCefrLevel(300, 260, 6.2, 24.0)
+        assertTrue(cLevel.startsWith("C"))
+    }
 }
