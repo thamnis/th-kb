@@ -7,6 +7,7 @@ pub const DEFAULT_DISCOVERY_PORT: u16 = 55678;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "t", rename_all = "lowercase")]
 pub enum RemoteCommand {
+    Ping,
     Move { dx: f64, dy: f64 },
     Click { btn: String },
     Scroll { dy: f64 },
@@ -133,6 +134,7 @@ impl InputBackend for OsInputBackend {
 
 pub fn dispatch_command(cmd: &RemoteCommand, backend: &mut dyn InputBackend) {
     match cmd {
+        RemoteCommand::Ping => {}
         RemoteCommand::Move { dx, dy } => {
             backend.move_pointer(dx.round() as i32, dy.round() as i32);
         }
@@ -194,6 +196,12 @@ mod tests {
                 "key:enter",
             ]
         );
+    }
+
+    #[test]
+    fn parses_ping_command() {
+        let cmd = parse_remote_command(r#"{"t":"ping"}"#).expect("valid ping");
+        assert_eq!(cmd, RemoteCommand::Ping);
     }
 
     #[test]

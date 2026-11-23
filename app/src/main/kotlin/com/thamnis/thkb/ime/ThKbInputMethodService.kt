@@ -117,6 +117,7 @@ class ThKbInputMethodService :
     private var activeErgonomicMode by mutableStateOf(KbSettings.ERGONOMIC_NORMAL)
     private var floatingSurfaceBoundsPx: Rect? = null
     private var navSelectionAnchor: Int? = null
+    private var liveMediaSnapshot by mutableStateOf(MediaPlayerSnapshot())
 
     override fun onCreate() {
         super.onCreate()
@@ -581,7 +582,7 @@ class ThKbInputMethodService :
                     themeId = settings.themeId,
                     remoteHostIp = settings.remoteHostIp,
                     remoteHostPort = settings.remoteHostPort,
-                    isMusicActive = audioManager?.isMusicActive == true,
+                    mediaSnapshot = liveMediaSnapshot,
                     onChangeErgonomicMode = { nextMode ->
                         preferences.setKeyboardErgonomicMode(nextMode)
                     },
@@ -593,6 +594,16 @@ class ThKbInputMethodService :
                     },
                     onCommitMediaClip = { entry ->
                         commitMediaClip(entry)
+                    },
+                    onSyncScreenshots = {
+                        if (ClipboardHistoryManager.hasScreenshotPermission(this@ThKbInputMethodService)) {
+                            clipboardHistory.importRecentScreenshots(limit = 5)
+                        } else {
+                            val intent = Intent(this@ThKbInputMethodService, SettingsActivity::class.java)
+                                .putExtra("target_page", "MAIN")
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                        }
                     },
                     onNavigate = { unit, dir, selecting ->
                         performNavAction(unit, dir, selecting)
@@ -612,8 +623,28 @@ class ThKbInputMethodService :
                     onMediaAction = { action ->
                         performMediaAction(action)
                     },
+                    onRefreshMediaSnapshot = {
+                        refreshMediaSnapshot()
+                    },
+                    onEnableMediaSync = {
+                        val intent = Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        runCatching { startActivity(intent) }
+                            .onFailure {
+                                startActivity(
+                                    Intent(this@ThKbInputMethodService, SettingsActivity::class.java)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            }
+                    },
                     onSelectRemoteHost = { ip, port ->
                         preferences.setRemoteHost(ip, port)
+                    },
+                    onOpenCrossDeviceSetup = {
+                        val intent = Intent(this@ThKbInputMethodService, SettingsActivity::class.java)
+                            .putExtra("target_page", "CROSS_DEVICE")
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
                     },
                 )
             }
@@ -637,7 +668,9 @@ class ThKbInputMethodService :
         pendingReplacement = null
         suppressedAutoReplacePrefix = null
         swipeAlternativesTail = null
-        clipboardHistory.syncFromSystemClipboard()
+        clipboardHistory.syncFromSystemClipboard(allowDelayedRetry = false)
+        clipboardHistory.importRecentScreenshots(limit = 3)
+        refreshMediaSnapshot()
         val settings = preferences.settings.value
         val effectiveLayoutId = subtypeLayoutOverride ?: settings.layoutId
         refreshSuggestions(effectiveLayoutId, settings)
@@ -1540,6 +1573,10 @@ class ThKbInputMethodService :
         }
     }
 
+    private fun refreshMediaSnapshot() {
+        liveMediaSnapshot = ThKbMediaListenerService.getSnapshot(this, audioManager)
+    }
+
     private fun performMediaAction(action: MediaControlAction) {
         val am = audioManager ?: return
         fun sendMediaKey(keyCode: Int) {
@@ -1548,14 +1585,59 @@ class ThKbInputMethodService :
             am.dispatchMediaKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0))
         }
         when (action) {
-            MediaControlAction.PLAY_PAUSE -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-            MediaControlAction.PREVIOUS -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
-            MediaControlAction.NEXT -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
-            MediaControlAction.REWIND -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_REWIND)
-            MediaControlAction.FAST_FORWARD -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)
-            MediaControlAction.VOL_DOWN -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
-            MediaControlAction.VOL_UP -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
-            MediaControlAction.MUTE -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, AudioManager.FLAG_SHOW_UI)
+            MediaControlAction.PLAY_PAUSE -> {
+                if (!ThKbMediaListenerService.togglePlayPauseViaSession(this)) {
+                    sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+                }
+                inputComposeView?.postDelayed({ refreshMediaSnapshot() }, 200L)
+            }
+            MediaControlAction.PREVIOUS -> {
+                if (!ThKbMediaListenerService.skipPrevViaSession(this)) {
+                    sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+                }
+                inputComposeView?.postDelayed({ refreshMediaSnapshot() }, 200L)
+            }
+            MediaControlAction.NEXT -> {
+                if (!ThKbMediaListenerService.skipNextViaSession(this)) {
+                    sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
+                }
+                inputComposeView?.postDelayed({ refreshMediaSnapshot() }, 200L)
+            }
+            MediaControlAction.REWIND -> {
+                if (!ThKbMediaListenerService.seekRelativeViaSession(this, -15_000L)) {
+                    sendMediaKey(KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD)
+                    sendMediaKey(KeyEvent.KEYCODE_MEDIA_REWIND)
+                }
+            }
+            MediaControlAction.FAST_FORWARD -> {
+                if (!ThKbMediaListenerService.seekRelativeViaSession(this, 15_000L)) {
+                    sendMediaKey(KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD)
+                    sendMediaKey(KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)
+                }
+            }
+            MediaControlAction.VOL_DOWN -> {
+                val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                val curVol = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+                val step = (maxVol / 7).coerceIn(2, 4)
+                am.setStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    (curVol - step).coerceAtLeast(0),
+                    AudioManager.FLAG_SHOW_UI,
+                )
+            }
+            MediaControlAction.VOL_UP -> {
+                val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                val curVol = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+                val step = (maxVol / 7).coerceIn(2, 4)
+                am.setStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    (curVol + step).coerceAtMost(maxVol),
+                    AudioManager.FLAG_SHOW_UI,
+                )
+            }
+            MediaControlAction.MUTE -> {
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, AudioManager.FLAG_SHOW_UI)
+            }
         }
     }
 

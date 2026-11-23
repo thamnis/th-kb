@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0-beta.2] - 2026-11-23
+
+### Added
+- **Media Session Sync (`ThKbMediaListenerService`)**: Optional player sync in Media Controls displays live Play vs Pause state matching the active player, track/artist title, and reliable ±15s Rewind/Fast-Forward seeking (`transportControls.seekTo` + `KEYCODE_MEDIA_SKIP_BACKWARD`/`FORWARD` fallback).
+- **Screenshots in Clipboard History**: `ClipboardHistoryManager` observes `MediaStore` screenshots (with `READ_MEDIA_IMAGES` / permission prompt in Settings & Clipboard panel) and handles OEM delayed screenshot clipboard writes.
+- **Full Custom Dictionary Viewer & Filler Word Cleanup**: Displays all saved & learned words (removed 30-word limit), adds search + `Most Used` / `A → Z` sorting + one-tap `"Clean filler"` button, and filters out passive common particles (`là`, `je`, `tu`, `quoi`, etc.).
+- **Intuitive PC ↔ Phone Interconnection**: Remote panel now auto-scans all Wi-Fi subnet broadcasts & `224.0.0.167` multicast on open, shows live Ping connection health (`Green` connected badge), provides an inline quick IP/peer switcher right inside the keyboard, and adds `"Send Clip"` to PC + guided setup in Settings.
+
+### Changed
+- **Bigger Media Volume Steps**: `Vol --` / `Vol ++` now step `STREAM_MUSIC` by 2–4 notches (~15–20%) per tap instead of a single tiny step.
+
 ## [1.3.0-beta.1] - 2026-11-23
 
 ### Added

@@ -203,4 +203,14 @@ class KeyboardStateLogicTest {
         assertEquals(6, KeyboardStateLogic.wordMoveAfter(" world again"))
         assertTrue(KeyboardStateLogic.phraseMoveBefore("First sentence. Second part") < "First sentence. Second part".length)
     }
+
+    @Test
+    fun personalDictionaryFillerFilterExcludesCommonParticles() {
+        assertTrue(com.thamnis.thkb.data.PersonalDictionaryManager.isCommonFillerWord("là"))
+        assertTrue(com.thamnis.thkb.data.PersonalDictionaryManager.isCommonFillerWord("je"))
+        assertTrue(com.thamnis.thkb.data.PersonalDictionaryManager.isCommonFillerWord("tu"))
+        assertTrue(com.thamnis.thkb.data.PersonalDictionaryManager.isCommonFillerWord("quoi"))
+        assertFalse(com.thamnis.thkb.data.PersonalDictionaryManager.isCommonFillerWord("abidjan"))
+        assertFalse(com.thamnis.thkb.data.PersonalDictionaryManager.isCommonFillerWord("thamnis"))
+    }
 }

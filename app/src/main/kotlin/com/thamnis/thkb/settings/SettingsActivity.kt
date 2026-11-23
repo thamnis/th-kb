@@ -46,6 +46,7 @@ import androidx.compose.material.icons.automirrored.outlined.Backspace
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -57,15 +58,16 @@ import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material.icons.outlined.Gesture
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.LocalHospital
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Mouse
+import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Public
-import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.TouchApp
@@ -168,6 +170,13 @@ class SettingsActivity : ComponentActivity() {
         val personalDictionary = PersonalDictionaryManager(this)
         val dialectManager = DialectPackManager(this)
 
+        val initialPage = when (intent.getStringExtra("target_page")) {
+            "CROSS_DEVICE" -> SettingsPage.CROSS_DEVICE
+            "THEMES" -> SettingsPage.THEMES
+            "PERSONAL_DICT" -> SettingsPage.PERSONAL_DICT
+            else -> SettingsPage.MAIN
+        }
+
         setContent {
             val settings by preferences.settings.collectAsState()
             val clips by clipboardHistory.entries.collectAsState()
@@ -175,7 +184,16 @@ class SettingsActivity : ComponentActivity() {
             val personalState by personalDictionary.state.collectAsState()
             val dialectState by dialectManager.state.collectAsState()
 
-            var currentPage by remember { mutableStateOf(SettingsPage.MAIN) }
+            var currentPage by remember { mutableStateOf(initialPage) }
+            var screenshotSynced by remember { mutableStateOf(ClipboardHistoryManager.hasScreenshotPermission(this@SettingsActivity)) }
+            val screenshotPermLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.RequestPermission(),
+            ) { granted ->
+                screenshotSynced = granted || ClipboardHistoryManager.hasScreenshotPermission(this@SettingsActivity)
+                if (screenshotSynced) {
+                    clipboardHistory.importRecentScreenshots(limit = 8)
+                }
+            }
             var selectedLicense by remember { mutableStateOf<LicenseArticle?>(null) }
             var selectedDialectPackId by remember { mutableStateOf<String?>(null) }
             var dialectWordSearch by remember { mutableStateOf("") }
@@ -523,6 +541,42 @@ class SettingsActivity : ComponentActivity() {
                                             checked = settings.deleteGesturesEnabled,
                                             onCheckedChange = { preferences.setDeleteGesturesEnabled(it) },
                                         )
+                                        SettingsRowDivider()
+                                        SettingsNavRow(
+                                            icon = Icons.Outlined.Image,
+                                            title = "Screenshot Clipboard Sync",
+                                            subtitle = if (screenshotSynced) {
+                                                "Recent screenshots automatically appear in Clipboard"
+                                            } else {
+                                                "Tap to allow reading screenshots into Clipboard history"
+                                            },
+                                            valueText = if (screenshotSynced) "Enabled" else "Enable",
+                                            onClick = {
+                                                if (screenshotSynced) {
+                                                    clipboardHistory.importRecentScreenshots(limit = 8)
+                                                } else {
+                                                    val perm = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                                        android.Manifest.permission.READ_MEDIA_IMAGES
+                                                    } else {
+                                                        android.Manifest.permission.READ_EXTERNAL_STORAGE
+                                                    }
+                                                    screenshotPermLauncher.launch(perm)
+                                                }
+                                            },
+                                        )
+                                        SettingsRowDivider()
+                                        val mediaSyncEnabled = com.thamnis.thkb.ime.ThKbMediaListenerService.isNotificationAccessGranted(this@SettingsActivity)
+                                        SettingsNavRow(
+                                            icon = Icons.Outlined.MusicNote,
+                                            title = "Media Player State & Seek Sync",
+                                            subtitle = "Sync Play/Pause icon, track title & 15s Rewind/FF with Spotify/YouTube",
+                                            valueText = if (mediaSyncEnabled) "Active" else "Allow",
+                                            onClick = {
+                                                runCatching {
+                                                    startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                                                }
+                                            },
+                                        )
                                     }
 
                                     SettingsGroup(title = "Words & Dialects") {
@@ -787,7 +841,30 @@ class SettingsActivity : ComponentActivity() {
                                         }
                                     }
 
-                                    SettingsGroup(title = "Wi-Fi File Sending (LocalSend v2 & KDE Connect)") {
+                                    val phoneIp = remember { CrossDeviceProtocol.getLocalIpv4Address() ?: "Wi-Fi unavailable" }
+                                    SettingsGroup(title = "1 · Quick Connect Checklist (Same Wi-Fi or USB)") {
+                                        Column(
+                                            modifier = Modifier.padding(16.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                                        ) {
+                                            Text(
+                                                text = "Phone Wi-Fi IP: $phoneIp",
+                                                color = SettingsAccentBlue,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                            )
+                                            Text(
+                                                text = "1. On your PC, start LocalSend, KDE Connect, or run `cargo run --manifest-path rust-companion/Cargo.toml --release`.\n" +
+                                                    "2. Tap Scan Wi-Fi Network below (or open ☺ → Remote on the keyboard — it scans automatically).\n" +
+                                                    "3. Over USB cable, run `adb reverse udp:55677 udp:55677` and connect to `127.0.0.1`.",
+                                                color = SettingsTextSecondary,
+                                                fontSize = 12.5.sp,
+                                                lineHeight = 18.sp,
+                                            )
+                                        }
+                                    }
+
+                                    SettingsGroup(title = "2 · Scan & Send Files (LocalSend v2, KDE Connect, Remote)") {
                                         Column(
                                             modifier = Modifier.padding(16.dp),
                                             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -831,7 +908,7 @@ class SettingsActivity : ComponentActivity() {
                                             peers.forEach { peer ->
                                                 SettingsRowDivider()
                                                 SettingsNavRow(
-                                                    icon = if (peer.protocol == PeerProtocol.THKB_REMOTE) Icons.Outlined.Mouse else Icons.Outlined.Send,
+                                                    icon = if (peer.protocol == PeerProtocol.THKB_REMOTE) Icons.Outlined.Mouse else Icons.AutoMirrored.Outlined.Send,
                                                     title = "${peer.name} (${peer.ip}:${peer.port})",
                                                     subtitle = if (peer.protocol == PeerProtocol.THKB_REMOTE) {
                                                         "Tap to bind as Remote KB & Mouse host"
@@ -887,17 +964,25 @@ class SettingsActivity : ComponentActivity() {
                                                 ) {
                                                     Text("Save Host")
                                                 }
-                                                OutlinedButton(
-                                                    onClick = {
-                                                        val port = hostPortDraft.toIntOrNull() ?: KbSettings.DEFAULT_REMOTE_PORT
-                                                        RemoteInputClient.sendMove(hostIpDraft.trim(), port, 12f, 0f)
-                                                        statusMsg = "Sent test pointer pulse to ${hostIpDraft.trim()}:$port"
-                                                    },
-                                                    enabled = hostIpDraft.isNotBlank(),
-                                                    shape = RoundedCornerShape(10.dp),
-                                                ) {
-                                                    Text("Test Pointer")
-                                                }
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            val port = hostPortDraft.toIntOrNull() ?: KbSettings.DEFAULT_REMOTE_PORT
+                                                            val clean = hostIpDraft.trim()
+                                                            RemoteInputClient.sendMove(clean, port, 18f, 0f)
+                                                            scope.launch {
+                                                                val pong = CrossDeviceProtocol.pingRemoteCompanion(clean, port)
+                                                                statusMsg = if (pong != null) {
+                                                                    "Connected to $pong ($clean:$port)! Pointer test sent."
+                                                                } else {
+                                                                    "No reply from $clean:$port. Check firewall UDP 55677/55678 or same Wi-Fi."
+                                                                }
+                                                            }
+                                                        },
+                                                        enabled = hostIpDraft.isNotBlank(),
+                                                        shape = RoundedCornerShape(10.dp),
+                                                    ) {
+                                                        Text("Ping & Test")
+                                                    }
                                             }
                                             Text(
                                                 text = "Run `cargo run --manifest-path rust-companion/Cargo.toml --release` on your PC, then hold ☺ → Remote on the keyboard.",
@@ -1175,22 +1260,76 @@ class SettingsActivity : ComponentActivity() {
                                         }
                                     }
 
+                                    var customSearch by remember { mutableStateOf("") }
+                                    var sortAlpha by remember { mutableStateOf(false) }
+
                                     if (personalState.words.isNotEmpty()) {
-                                        SettingsGroup(title = "My Saved & Learned Words (${personalState.words.size}) · Tap to Remove") {
-                                            FlowRow(
+                                        val filteredWords = remember(personalState.words, customSearch, sortAlpha) {
+                                            val q = customSearch.trim().lowercase(Locale.ROOT)
+                                            val matching = if (q.isEmpty()) {
+                                                personalState.words.entries.toList()
+                                            } else {
+                                                personalState.words.entries.filter { (w, _) ->
+                                                    w.lowercase(Locale.ROOT).contains(q)
+                                                }
+                                            }
+                                            if (sortAlpha) {
+                                                matching.sortedBy { it.key.lowercase(Locale.ROOT) }
+                                            } else {
+                                                matching.sortedByDescending { it.value }
+                                            }
+                                        }
+                                        val fillerCount = remember(personalState.words) {
+                                            personalState.words.keys.count {
+                                                PersonalDictionaryManager.isCommonFillerWord(it.lowercase(Locale.ROOT))
+                                            }
+                                        }
+                                        SettingsGroup(title = "All Saved & Learned Words (${filteredWords.size} / ${personalState.words.size}) · Tap to Remove") {
+                                            Column(
                                                 modifier = Modifier.padding(14.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalArrangement = Arrangement.spacedBy(10.dp),
                                             ) {
-                                                personalState.words.entries
-                                                    .sortedByDescending { it.value }
-                                                    .take(30)
-                                                    .forEach { (word, _) ->
+                                                OutlinedTextField(
+                                                    value = customSearch,
+                                                    onValueChange = { customSearch = it },
+                                                    label = { Text("Search all custom words...") },
+                                                    singleLine = true,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                )
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    InputChip(
+                                                        selected = !sortAlpha,
+                                                        onClick = { sortAlpha = false },
+                                                        label = { Text("Most Used") },
+                                                    )
+                                                    InputChip(
+                                                        selected = sortAlpha,
+                                                        onClick = { sortAlpha = true },
+                                                        label = { Text("A → Z") },
+                                                    )
+                                                    if (fillerCount > 0) {
+                                                        InputChip(
+                                                            selected = false,
+                                                            onClick = { personalDictionary.cleanFillerWords() },
+                                                            label = { Text("Clean $fillerCount filler") },
+                                                        )
+                                                    }
+                                                }
+                                                FlowRow(
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                ) {
+                                                    filteredWords.forEach { (word, weight) ->
                                                         InputChip(
                                                             selected = false,
                                                             onClick = { personalDictionary.removeWord(word) },
-                                                            label = { Text("$word ×") },
+                                                            label = { Text("$word ($weight) ×") },
                                                         )
                                                     }
+                                                }
                                             }
                                         }
                                     }

@@ -176,6 +176,7 @@ import com.thamnis.thkb.engine.SwipeTrailPoint
 import com.thamnis.thkb.ime.AccentPopupState
 import com.thamnis.thkb.ime.InputContext
 import com.thamnis.thkb.ime.MediaControlAction
+import com.thamnis.thkb.ime.MediaPlayerSnapshot
 import com.thamnis.thkb.ime.NavDirection
 import com.thamnis.thkb.ime.NavUnit
 import com.thamnis.thkb.settings.KbSettings
@@ -287,17 +288,21 @@ fun KeyboardRoot(
     themeId: String = KbSettings.THEME_DARK_GRAPHITE,
     remoteHostIp: String = "",
     remoteHostPort: Int = KbSettings.DEFAULT_REMOTE_PORT,
-    isMusicActive: Boolean = false,
+    mediaSnapshot: MediaPlayerSnapshot = MediaPlayerSnapshot(),
     onChangeErgonomicMode: (String) -> Unit = {},
     onUpdateFloatingPosition: (Float, Float) -> Unit = { _, _ -> },
     onFloatingBoundsChanged: (android.graphics.Rect?) -> Unit = {},
     onCommitMediaClip: (ClipboardEntry) -> Unit = {},
+    onSyncScreenshots: () -> Unit = {},
     onNavigate: (NavUnit, NavDirection, Boolean) -> Unit = { _, _, _ -> },
     onSelectAll: () -> Unit = {},
     onCopy: () -> Unit = {},
     onCut: () -> Unit = {},
     onMediaAction: (MediaControlAction) -> Unit = {},
+    onRefreshMediaSnapshot: () -> Unit = {},
+    onEnableMediaSync: () -> Unit = {},
     onSelectRemoteHost: (String, Int) -> Unit = { _, _ -> },
+    onOpenCrossDeviceSetup: () -> Unit = onOpenSettings,
 ) {
     val context = LocalContext.current
     val activePalette = remember(themeId, context) { resolveKbPalette(themeId, context) }
@@ -366,17 +371,21 @@ fun KeyboardRoot(
         floatingOffsetYDp = floatingOffsetYDp,
         remoteHostIp = remoteHostIp,
         remoteHostPort = remoteHostPort,
-        isMusicActive = isMusicActive,
+        mediaSnapshot = mediaSnapshot,
         onChangeErgonomicMode = onChangeErgonomicMode,
         onUpdateFloatingPosition = onUpdateFloatingPosition,
         onFloatingBoundsChanged = onFloatingBoundsChanged,
         onCommitMediaClip = onCommitMediaClip,
+        onSyncScreenshots = onSyncScreenshots,
         onNavigate = onNavigate,
         onSelectAll = onSelectAll,
         onCopy = onCopy,
         onCut = onCut,
         onMediaAction = onMediaAction,
+        onRefreshMediaSnapshot = onRefreshMediaSnapshot,
+        onEnableMediaSync = onEnableMediaSync,
         onSelectRemoteHost = onSelectRemoteHost,
+        onOpenCrossDeviceSetup = onOpenCrossDeviceSetup,
     )
     }
 }
@@ -446,17 +455,21 @@ private fun KeyboardRootContent(
     floatingOffsetYDp: Float = 96f,
     remoteHostIp: String = "",
     remoteHostPort: Int = KbSettings.DEFAULT_REMOTE_PORT,
-    isMusicActive: Boolean = false,
+    mediaSnapshot: MediaPlayerSnapshot = MediaPlayerSnapshot(),
     onChangeErgonomicMode: (String) -> Unit = {},
     onUpdateFloatingPosition: (Float, Float) -> Unit = { _, _ -> },
     onFloatingBoundsChanged: (android.graphics.Rect?) -> Unit = {},
     onCommitMediaClip: (ClipboardEntry) -> Unit = {},
+    onSyncScreenshots: () -> Unit = {},
     onNavigate: (NavUnit, NavDirection, Boolean) -> Unit = { _, _, _ -> },
     onSelectAll: () -> Unit = {},
     onCopy: () -> Unit = {},
     onCut: () -> Unit = {},
     onMediaAction: (MediaControlAction) -> Unit = {},
+    onRefreshMediaSnapshot: () -> Unit = {},
+    onEnableMediaSync: () -> Unit = {},
     onSelectRemoteHost: (String, Int) -> Unit = { _, _ -> },
+    onOpenCrossDeviceSetup: () -> Unit = {},
 ) {
     var shiftState by remember(inputSessionKey, autoCapOnOpen) {
         mutableStateOf(if (autoCapOnOpen) ShiftState.ONCE else ShiftState.OFF)
@@ -842,6 +855,9 @@ private fun KeyboardRootContent(
                                 ) { currentPanelMode ->
                                     when (currentPanelMode) {
                         PanelMode.CLIPBOARD -> {
+                            LaunchedEffect(Unit) {
+                                onSyncScreenshots()
+                            }
                             ClipboardPanel(
                                 panelHeightDp = if (canResizePanel) scrollPanelHeightDp else 250f,
                                 entries = clipboardEntries,
@@ -860,6 +876,7 @@ private fun KeyboardRootContent(
                                 onPinClip = onPinClip,
                                 onDeleteClip = onDeleteClip,
                                 onClearUnpinned = onClearUnpinnedClips,
+                                onSyncScreenshots = onSyncScreenshots,
                             )
                         }
                         PanelMode.NAV -> {
@@ -874,10 +891,17 @@ private fun KeyboardRootContent(
                             )
                         }
                         PanelMode.MEDIA -> {
+                            LaunchedEffect(Unit) {
+                                while (true) {
+                                    onRefreshMediaSnapshot()
+                                    delay(500L)
+                                }
+                            }
                             MediaControlPanel(
                                 panelHeightDp = 250f,
-                                isMusicActive = isMusicActive,
+                                playbackSnapshot = mediaSnapshot,
                                 onMediaAction = onMediaAction,
+                                onEnableMediaSync = onEnableMediaSync,
                                 onKeyFeedback = onKeyFeedback,
                             )
                         }
@@ -886,7 +910,9 @@ private fun KeyboardRootContent(
                                 panelHeightDp = 250f,
                                 savedHostIp = remoteHostIp,
                                 savedHostPort = remoteHostPort,
+                                latestClipText = clipboardEntries.firstOrNull { !it.isRichMedia }?.text.orEmpty(),
                                 onSelectHost = onSelectRemoteHost,
+                                onOpenCrossDeviceSetup = onOpenCrossDeviceSetup,
                                 onKeyFeedback = onKeyFeedback,
                             )
                         }

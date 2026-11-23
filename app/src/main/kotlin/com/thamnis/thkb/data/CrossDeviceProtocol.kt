@@ -17,8 +17,10 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.HttpURLConnection
 import java.net.InetAddress
+import java.net.Inet4Address
 import java.net.InetSocketAddress
 import java.net.MulticastSocket
+import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URL
@@ -194,15 +196,34 @@ object CrossDeviceProtocol {
                 }
             }
 
-            // 3. th-kb Remote Desktop Companion UDP discovery on port 55678
+            // 3. th-kb Remote Desktop Companion UDP discovery on port 55678 (broadcast + subnet broadcast + multicast + localhost)
             runCatching {
                 DatagramSocket(0).use { sock ->
                     sock.broadcast = true
-                    sock.soTimeout = 350
+                    sock.soTimeout = 450
                     val probe = "THKB_DISCOVER".toByteArray(Charsets.UTF_8)
-                    val broadcastAddr = InetAddress.getByName("255.255.255.255")
-                    sock.send(DatagramPacket(probe, probe.size, broadcastAddr, THKB_DISCOVERY_PORT))
-                    val deadline = System.currentTimeMillis() + (durationMs / 3)
+                    val targets = linkedSetOf<InetAddress>(
+                        InetAddress.getByName("255.255.255.255"),
+                        InetAddress.getByName(LOCALSEND_MULTICAST_GROUP),
+                        InetAddress.getByName("127.0.0.1"),
+                    )
+                    runCatching {
+                        val ifaces = NetworkInterface.getNetworkInterfaces()
+                        while (ifaces.hasMoreElements()) {
+                            val iface = ifaces.nextElement()
+                            if (iface.isUp && !iface.isLoopback) {
+                                for (ia in iface.interfaceAddresses) {
+                                    ia.broadcast?.let { targets.add(it) }
+                                }
+                            }
+                        }
+                    }
+                    for (target in targets) {
+                        runCatching {
+                            sock.send(DatagramPacket(probe, probe.size, target, THKB_DISCOVERY_PORT))
+                        }
+                    }
+                    val deadline = System.currentTimeMillis() + (durationMs / 2)
                     val buf = ByteArray(2048)
                     while (System.currentTimeMillis() < deadline) {
                         val recv = DatagramPacket(buf, buf.size)
@@ -241,6 +262,42 @@ object CrossDeviceProtocol {
 
         discovered.values.toList()
     }
+
+    /** Checks reachability of a th-kb companion host:port via UDP Ping and returns its hostname if alive. */
+    suspend fun pingRemoteCompanion(host: String, port: Int): String? = withContext(Dispatchers.IO) {
+        val cleanHost = host.trim()
+        if (cleanHost.isEmpty()) return@withContext null
+        runCatching {
+            DatagramSocket(0).use { sock ->
+                sock.soTimeout = 450
+                val payload = """{"t":"ping"}""".toByteArray(Charsets.UTF_8)
+                val addr = InetAddress.getByName(cleanHost)
+                sock.send(DatagramPacket(payload, payload.size, addr, port))
+                val buf = ByteArray(512)
+                val recv = DatagramPacket(buf, buf.size)
+                sock.receive(recv)
+                val msg = String(recv.data, 0, recv.length, Charsets.UTF_8).trim()
+                if (msg.startsWith("THKB_PONG:")) msg.removePrefix("THKB_PONG:").ifBlank { cleanHost } else null
+            }
+        }.getOrNull()
+    }
+
+    /** Returns the device's primary local LAN IPv4 address for display in pairing guides. */
+    fun getLocalIpv4Address(): String? = runCatching {
+        val ifaces = NetworkInterface.getNetworkInterfaces()
+        while (ifaces.hasMoreElements()) {
+            val iface = ifaces.nextElement()
+            if (!iface.isUp || iface.isLoopback) continue
+            val addrs = iface.inetAddresses
+            while (addrs.hasMoreElements()) {
+                val addr = addrs.nextElement()
+                if (addr is Inet4Address && !addr.isLoopbackAddress) {
+                    return@runCatching addr.hostAddress
+                }
+            }
+        }
+        null
+    }.getOrNull()
 
     /** Sends a file over LocalSend v2 or KDE Connect LAN protocol. */
     suspend fun sendFile(

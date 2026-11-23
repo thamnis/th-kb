@@ -32,26 +32,34 @@ class PersonalDictionaryManager(context: Context) {
         prefs.registerOnSharedPreferenceChangeListener(listener)
     }
 
-    fun learnWord(prevWord: String, word: String, weightBoost: Int = 2) {
+    fun learnWord(
+        prevWord: String,
+        word: String,
+        weightBoost: Int = 2,
+        explicitCustom: Boolean = false,
+    ) {
         val trimmed = word.trim()
         if (trimmed.length < 2) return
         if (!trimmed.all { it.isLetter() || it == '\'' || it == '-' }) return
 
+        val lower = trimmed.lowercase(Locale.ROOT)
         val current = _state.value
         val nextBlocked = current.blocked.toMutableSet()
-        nextBlocked.remove(trimmed.lowercase(Locale.ROOT))
+        nextBlocked.remove(lower)
 
         val nextWords = current.words.toMutableMap()
-        val existingKey = nextWords.keys.firstOrNull { it.equals(trimmed, ignoreCase = true) }
-        if (existingKey != null) {
-            nextWords[existingKey] = (nextWords[existingKey] ?: 0) + weightBoost
-        } else {
-            // Limit stored learned vocabulary to top 2,500 entries to stay ultra-lightweight
-            if (nextWords.size >= 2500) {
-                val minEntry = nextWords.minByOrNull { it.value }
-                if (minEntry != null) nextWords.remove(minEntry.key)
+        if (explicitCustom || !isCommonFillerWord(lower)) {
+            val existingKey = nextWords.keys.firstOrNull { it.equals(trimmed, ignoreCase = true) }
+            if (existingKey != null) {
+                nextWords[existingKey] = (nextWords[existingKey] ?: 0) + weightBoost
+            } else {
+                // Limit stored learned vocabulary to top 2,500 entries to stay ultra-lightweight
+                if (nextWords.size >= 2500) {
+                    val minEntry = nextWords.minByOrNull { it.value }
+                    if (minEntry != null) nextWords.remove(minEntry.key)
+                }
+                nextWords[trimmed] = weightBoost
             }
-            nextWords[trimmed] = weightBoost
         }
 
         val nextBigrams = current.bigrams.mapValues { it.value.toMutableMap() }.toMutableMap()
@@ -65,7 +73,19 @@ class PersonalDictionaryManager(context: Context) {
     }
 
     fun addCustomWord(word: String) {
-        learnWord("", word, weightBoost = 25)
+        learnWord("", word, weightBoost = EXPLICIT_CUSTOM_WEIGHT, explicitCustom = true)
+    }
+
+    fun cleanFillerWords(): Int {
+        val current = _state.value
+        val filtered = current.words.filterKeys { word ->
+            !isCommonFillerWord(word.lowercase(Locale.ROOT))
+        }
+        val removed = current.words.size - filtered.size
+        if (removed > 0) {
+            saveState(current.copy(words = filtered))
+        }
+        return removed
     }
 
     fun removeWord(word: String) {
@@ -123,7 +143,15 @@ class PersonalDictionaryManager(context: Context) {
 
     private fun loadState(): PersonalDictionaryState {
         val raw = prefs.getString(KEY_PERSONAL_JSON, null) ?: return PersonalDictionaryState()
-        return parseState(raw)
+        val loaded = parseState(raw)
+        val cleanedWords = loaded.words.filter { (w, weight) ->
+            weight >= EXPLICIT_CUSTOM_WEIGHT || !isCommonFillerWord(w.lowercase(Locale.ROOT))
+        }
+        return if (cleanedWords.size != loaded.words.size) {
+            loaded.copy(words = cleanedWords)
+        } else {
+            loaded
+        }
     }
 
     fun destroy() {
@@ -133,6 +161,29 @@ class PersonalDictionaryManager(context: Context) {
     companion object {
         private const val PREFS_NAME = "th_kb_personal_dict"
         private const val KEY_PERSONAL_JSON = "personal_dict_json"
+        private const val EXPLICIT_CUSTOM_WEIGHT = 50
+
+        private val COMMON_FILLER_WORDS = setOf(
+            // French common particles, pronouns, prepositions, filler words
+            "je", "tu", "il", "elle", "on", "nous", "vous", "ils", "elles",
+            "me", "te", "se", "le", "la", "là", "les", "un", "une", "des",
+            "de", "du", "au", "aux", "en", "et", "ou", "où", "mais", "donc",
+            "car", "ni", "ne", "pas", "plus", "qui", "que", "quoi", "dont",
+            "ce", "cet", "cette", "ces", "ça", "ca", "mon", "ma", "mes",
+            "ton", "ta", "tes", "son", "sa", "ses", "nos", "vos", "leur", "leurs",
+            "par", "pour", "sur", "sous", "dans", "avec", "sans", "vers", "chez",
+            "oui", "non", "très", "tres", "bien", "mal", "tout", "tous", "est", "sont",
+            "suis", "es", "as", "ai", "ont", "été", "ete", "fait", "faire",
+            // English common function words
+            "the", "be", "to", "of", "and", "in", "that", "have", "it", "for",
+            "not", "on", "with", "he", "as", "you", "do", "at", "this", "but",
+            "his", "by", "from", "they", "we", "say", "her", "she", "or", "an",
+            "will", "my", "one", "all", "would", "there", "their", "what", "so",
+            "up", "out", "if", "about", "who", "get", "which", "go", "me", "is",
+            "am", "are", "was", "were", "has", "had", "did", "yes", "no",
+        )
+
+        fun isCommonFillerWord(lowerWord: String): Boolean = lowerWord in COMMON_FILLER_WORDS
 
         fun parseState(raw: String): PersonalDictionaryState {
             return runCatching {

@@ -82,6 +82,7 @@ internal fun ClipboardPanel(
     onPinClip: (String) -> Unit,
     onDeleteClip: (String) -> Unit,
     onClearUnpinned: () -> Unit,
+    onSyncScreenshots: () -> Unit = {},
 ) {
     val contentHeight = (panelHeightDp - 40f).coerceAtLeast(180f).dp
     val context = LocalContext.current
@@ -97,17 +98,23 @@ internal fun ClipboardPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(34.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CategoryChip(
-                label = "Paste from system",
+                label = "Paste",
                 active = true,
                 onClick = onSystemPaste,
             )
+            CategoryChip(
+                label = "Screenshots",
+                active = false,
+                onClick = onSyncScreenshots,
+            )
+            Spacer(modifier = Modifier.weight(1f))
             if (entries.any { !it.pinned }) {
                 CategoryChip(
-                    label = "Clear unpinned",
+                    label = "Clear",
                     active = false,
                     onClick = onClearUnpinned,
                 )

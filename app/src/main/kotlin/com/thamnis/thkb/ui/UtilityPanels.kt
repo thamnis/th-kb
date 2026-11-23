@@ -25,6 +25,9 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.Backspace
 import androidx.compose.material.icons.automirrored.outlined.KeyboardReturn
+import androidx.compose.material.icons.automirrored.outlined.LastPage
+import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.automirrored.outlined.VolumeDown
 import androidx.compose.material.icons.automirrored.outlined.VolumeOff
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -35,18 +38,17 @@ import androidx.compose.material.icons.outlined.FastRewind
 import androidx.compose.material.icons.outlined.FirstPage
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
-import androidx.compose.material.icons.outlined.LastPage
 import androidx.compose.material.icons.outlined.Mouse
+import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.SelectAll
-import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SkipPrevious
-import androidx.compose.material.icons.outlined.VolumeDown
 import androidx.compose.material.icons.outlined.WifiFind
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -69,6 +72,7 @@ import com.thamnis.thkb.data.CrossDeviceProtocol
 import com.thamnis.thkb.data.PeerProtocol
 import com.thamnis.thkb.data.RemoteInputClient
 import com.thamnis.thkb.ime.MediaControlAction
+import com.thamnis.thkb.ime.MediaPlayerSnapshot
 import com.thamnis.thkb.ime.NavDirection
 import com.thamnis.thkb.ime.NavUnit
 import kotlinx.coroutines.launch
@@ -157,7 +161,7 @@ internal fun NavigationPanel(
                     )
                     UtilityActionTile(
                         label = "End",
-                        icon = Icons.Outlined.LastPage,
+                        icon = Icons.AutoMirrored.Outlined.LastPage,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
@@ -328,10 +332,15 @@ internal fun NavigationPanel(
 @Composable
 internal fun MediaControlPanel(
     panelHeightDp: Float,
-    isMusicActive: Boolean,
+    playbackSnapshot: MediaPlayerSnapshot,
     onMediaAction: (MediaControlAction) -> Unit,
+    onEnableMediaSync: () -> Unit = {},
     onKeyFeedback: () -> Unit,
 ) {
+    var optimisticPlaying by remember(playbackSnapshot.isPlaying) {
+        mutableStateOf(playbackSnapshot.isPlaying)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -340,12 +349,36 @@ internal fun MediaControlPanel(
         verticalArrangement = Arrangement.SpaceBetween,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = if (isMusicActive) "System Media Active" else "System Media Controls",
-            color = if (isMusicActive) ReturnBgColor else HintTextColor,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = when {
+                    playbackSnapshot.trackTitle.isNotEmpty() -> playbackSnapshot.trackTitle
+                    optimisticPlaying -> "Playing Media"
+                    else -> "Paused · Media Controls"
+                },
+                color = if (optimisticPlaying) ReturnBgColor else HintTextColor,
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (!playbackSnapshot.listenerEnabled) {
+                Spacer(modifier = Modifier.width(6.dp))
+                CategoryChip(
+                    label = "Sync Player",
+                    active = false,
+                    onClick = {
+                        onKeyFeedback()
+                        onEnableMediaSync()
+                    },
+                )
+            }
+        }
 
         // Main transport controls
         Row(
@@ -355,7 +388,7 @@ internal fun MediaControlPanel(
         ) {
             UtilityRoundButton(
                 icon = Icons.Outlined.FastRewind,
-                description = "Rewind",
+                description = "Rewind 10s",
                 sizeDp = 44,
                 onClick = {
                     onKeyFeedback()
@@ -378,13 +411,14 @@ internal fun MediaControlPanel(
                     .background(ReturnBgColor)
                     .clickable {
                         onKeyFeedback()
+                        optimisticPlaying = !optimisticPlaying
                         onMediaAction(MediaControlAction.PLAY_PAUSE)
                     },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.PlayArrow,
-                    contentDescription = "Play / Pause",
+                    imageVector = if (optimisticPlaying) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
+                    contentDescription = if (optimisticPlaying) "Pause" else "Play",
                     tint = ReturnFgColor,
                     modifier = Modifier.size(32.dp),
                 )
@@ -400,7 +434,7 @@ internal fun MediaControlPanel(
             )
             UtilityRoundButton(
                 icon = Icons.Outlined.FastForward,
-                description = "Fast Forward",
+                description = "Fast Forward 10s",
                 sizeDp = 44,
                 onClick = {
                     onKeyFeedback()
@@ -409,7 +443,7 @@ internal fun MediaControlPanel(
             )
         }
 
-        // System volume controls
+        // System volume controls (bigger jumps per tap)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -417,8 +451,8 @@ internal fun MediaControlPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             UtilityActionTile(
-                label = "Vol -",
-                icon = Icons.Outlined.VolumeDown,
+                label = "Vol --",
+                icon = Icons.AutoMirrored.Outlined.VolumeDown,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
@@ -439,7 +473,7 @@ internal fun MediaControlPanel(
                 },
             )
             UtilityActionTile(
-                label = "Vol +",
+                label = "Vol ++",
                 icon = Icons.AutoMirrored.Outlined.VolumeUp,
                 modifier = Modifier
                     .weight(1f)
@@ -458,7 +492,9 @@ internal fun RemoteControlPanel(
     panelHeightDp: Float,
     savedHostIp: String,
     savedHostPort: Int,
+    latestClipText: String = "",
     onSelectHost: (String, Int) -> Unit,
+    onOpenCrossDeviceSetup: () -> Unit = {},
     onKeyFeedback: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -468,6 +504,36 @@ internal fun RemoteControlPanel(
     var draftText by remember { mutableStateOf("") }
     var activeHost by remember(savedHostIp) { mutableStateOf(savedHostIp) }
     var activePort by remember(savedHostPort) { mutableStateOf(savedHostPort) }
+    var ipInputDraft by remember(savedHostIp) { mutableStateOf(savedHostIp) }
+    var verifiedName by remember { mutableStateOf<String?>(null) }
+    var showConnectDrawer by remember { mutableStateOf(savedHostIp.isBlank()) }
+
+    fun scanAndVerify() {
+        if (isScanning) return
+        isScanning = true
+        scope.launch {
+            if (activeHost.isNotBlank()) {
+                verifiedName = CrossDeviceProtocol.pingRemoteCompanion(activeHost, activePort)
+            }
+            val peers = CrossDeviceProtocol.discoverAllPeers(context, 1300L)
+                .filter { it.protocol == PeerProtocol.THKB_REMOTE }
+            discoveredPeers = peers
+            if (peers.isNotEmpty() && (activeHost.isBlank() || verifiedName == null)) {
+                val chosen = peers.first()
+                activeHost = chosen.ip
+                activePort = chosen.port
+                ipInputDraft = chosen.ip
+                verifiedName = chosen.name
+                onSelectHost(chosen.ip, chosen.port)
+                showConnectDrawer = false
+            }
+            isScanning = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        scanAndVerify()
+    }
 
     Column(
         modifier = Modifier
@@ -476,71 +542,161 @@ internal fun RemoteControlPanel(
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        // Peer bar + Scan Wi-Fi
+        // Intuitive Connection Bar: Live Green Verified Badge + Tap to Connect/Switch PC
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(32.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(ActionKeyBgColor)
+                    .clickable {
+                        onKeyFeedback()
+                        showConnectDrawer = !showConnectDrawer
+                    }
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.Mouse,
-                    contentDescription = null,
-                    tint = if (activeHost.isNotEmpty()) ReturnBgColor else HintTextColor,
-                    modifier = Modifier.size(16.dp),
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when {
+                                verifiedName != null -> Color(0xFF4ADE80)
+                                isScanning -> Color(0xFFFBBF24)
+                                else -> HintTextColor
+                            },
+                        ),
                 )
                 Text(
-                    text = if (activeHost.isNotEmpty()) "$activeHost:$activePort" else "Set host in Settings or Scan Wi-Fi",
-                    color = if (activeHost.isNotEmpty()) ToolbarTextColor else HintTextColor,
-                    fontSize = 12.sp,
+                    text = when {
+                        verifiedName != null -> "$verifiedName ($activeHost)"
+                        isScanning -> "Searching PC on Wi-Fi..."
+                        activeHost.isNotEmpty() -> "$activeHost · Tap to edit"
+                        else -> "Tap to connect PC"
+                    },
+                    color = if (verifiedName != null) ToolbarTextColor else HintTextColor,
+                    fontSize = 11.5.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
 
-            if (discoveredPeers.isNotEmpty()) {
-                val first = discoveredPeers.first()
+            if (latestClipText.isNotBlank() && activeHost.isNotBlank()) {
                 CategoryChip(
-                    label = first.name,
-                    active = activeHost == first.ip,
+                    label = "Send Clip",
+                    active = false,
                     onClick = {
                         onKeyFeedback()
-                        activeHost = first.ip
-                        activePort = first.port
-                        onSelectHost(first.ip, first.port)
+                        RemoteInputClient.sendText(activeHost, activePort, latestClipText)
                     },
                 )
-                Spacer(modifier = Modifier.width(4.dp))
             }
 
             CategoryChip(
-                label = if (isScanning) "Scanning..." else "Scan Wi-Fi",
-                active = !isScanning,
+                label = if (isScanning) "..." else "Scan",
+                active = verifiedName == null && !isScanning,
                 onClick = {
-                    if (!isScanning) {
-                        onKeyFeedback()
-                        isScanning = true
-                        scope.launch {
-                            val peers = CrossDeviceProtocol.discoverAllPeers(context, 1200L)
-                                .filter { it.protocol == PeerProtocol.THKB_REMOTE }
-                            discoveredPeers = peers
-                            if (peers.isNotEmpty()) {
-                                activeHost = peers.first().ip
-                                activePort = peers.first().port
-                                onSelectHost(activeHost, activePort)
-                            }
-                            isScanning = false
-                        }
-                    }
+                    onKeyFeedback()
+                    scanAndVerify()
                 },
             )
         }
+
+        if (showConnectDrawer) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(KeyBgColor)
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = "Run `th-kb-companion` on your PC (same Wi-Fi) or enter its IP:",
+                    color = ToolbarTextColor,
+                    fontSize = 11.5.sp,
+                )
+                if (discoveredPeers.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        discoveredPeers.take(3).forEach { peer ->
+                            CategoryChip(
+                                label = "${peer.name} (${peer.ip})",
+                                active = activeHost == peer.ip,
+                                onClick = {
+                                    onKeyFeedback()
+                                    activeHost = peer.ip
+                                    activePort = peer.port
+                                    ipInputDraft = peer.ip
+                                    verifiedName = peer.name
+                                    onSelectHost(peer.ip, peer.port)
+                                    showConnectDrawer = false
+                                },
+                            )
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(ActionKeyBgColor)
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                    ) {
+                        BasicTextField(
+                            value = ipInputDraft,
+                            onValueChange = { ipInputDraft = it },
+                            singleLine = true,
+                            textStyle = TextStyle(color = KeyTextColor, fontSize = 13.sp),
+                            cursorBrush = SolidColor(ReturnBgColor),
+                            decorationBox = { inner ->
+                                if (ipInputDraft.isEmpty()) {
+                                    Text("PC IP (e.g. 192.168.1.42)", color = HintTextColor, fontSize = 12.sp)
+                                }
+                                inner()
+                            },
+                        )
+                    }
+                    CategoryChip(
+                        label = "Connect",
+                        active = ipInputDraft.isNotBlank(),
+                        onClick = {
+                            val clean = ipInputDraft.trim()
+                            if (clean.isNotEmpty()) {
+                                onKeyFeedback()
+                                activeHost = clean
+                                onSelectHost(clean, activePort)
+                                showConnectDrawer = false
+                                scope.launch {
+                                    verifiedName = CrossDeviceProtocol.pingRemoteCompanion(clean, activePort)
+                                }
+                            }
+                        },
+                    )
+                    CategoryChip(
+                        label = "Guide",
+                        active = false,
+                        onClick = {
+                            onKeyFeedback()
+                            onOpenCrossDeviceSetup()
+                        },
+                    )
+                }
+            }
+        } else {
 
         // Trackpad surface + vertical scroll rail
         Row(
@@ -700,12 +856,13 @@ internal fun RemoteControlPanel(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.Send,
+                    imageVector = Icons.AutoMirrored.Outlined.Send,
                     contentDescription = "Send to PC",
                     tint = if (draftText.isNotEmpty()) ReturnFgColor else HintTextColor,
                     modifier = Modifier.size(15.dp),
                 )
             }
+        }
         }
     }
 }
