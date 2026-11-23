@@ -1,8 +1,11 @@
 package com.thamnis.thkb.ime
 
+import android.content.ClipDescription
 import android.content.Intent
+import android.graphics.Rect
 import android.inputmethodservice.InputMethodService
 import android.media.AudioManager
+import android.net.Uri
 import android.os.SystemClock
 import android.text.InputType
 import android.view.HapticFeedbackConstants
@@ -12,14 +15,21 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputMethodSubtype
+import android.widget.Toast
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.view.WindowCompat
+import androidx.core.view.inputmethod.EditorInfoCompat
+import androidx.core.view.inputmethod.InputConnectionCompat
+import androidx.core.view.inputmethod.InputContentInfoCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -32,6 +42,7 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.thamnis.thkb.data.AssetRepository
+import com.thamnis.thkb.data.ClipboardEntry
 import com.thamnis.thkb.data.ClipboardHistoryManager
 import com.thamnis.thkb.data.DialectPackManager
 import com.thamnis.thkb.data.PersonalDictionaryManager
@@ -44,6 +55,7 @@ import com.thamnis.thkb.settings.KbPreferences
 import com.thamnis.thkb.settings.KbSettings
 import com.thamnis.thkb.settings.SettingsActivity
 import com.thamnis.thkb.ui.KeyboardRoot
+import com.thamnis.thkb.ui.resolveKbPalette
 
 class ThKbInputMethodService :
     InputMethodService(),
@@ -102,6 +114,9 @@ class ThKbInputMethodService :
     private var activeEditorAction by mutableStateOf(EditorInfo.IME_ACTION_NONE)
     private var subtypeLayoutOverride by mutableStateOf<String?>(null)
     private var inputSessionKey by mutableStateOf(0)
+    private var activeErgonomicMode by mutableStateOf(KbSettings.ERGONOMIC_NORMAL)
+    private var floatingSurfaceBoundsPx: Rect? = null
+    private var navSelectionAnchor: Int? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -161,6 +176,25 @@ class ThKbInputMethodService :
                 val dialectState by dialectManager.state.collectAsState()
                 val voiceUiState by voiceInputManager.state.collectAsState()
                 val effectiveLayoutId = subtypeLayoutOverride ?: settings.layoutId
+                val composeContext = LocalContext.current
+                val activePalette = remember(settings.themeId, composeContext) {
+                    resolveKbPalette(settings.themeId, composeContext)
+                }
+
+                LaunchedEffect(settings.keyboardErgonomicMode, activePalette) {
+                    activeErgonomicMode = settings.keyboardErgonomicMode
+                    if (settings.keyboardErgonomicMode != KbSettings.ERGONOMIC_FLOATING) {
+                        floatingSurfaceBoundsPx = null
+                    }
+                    window?.window?.let { win ->
+                        @Suppress("DEPRECATION")
+                        win.navigationBarColor = if (settings.keyboardErgonomicMode == KbSettings.ERGONOMIC_FLOATING) {
+                            android.graphics.Color.TRANSPARENT
+                        } else {
+                            activePalette.bg.toArgb()
+                        }
+                    }
+                }
 
                 LaunchedEffect(Unit) {
                     VoicePermissionBridge.results.collect { granted ->
@@ -268,8 +302,15 @@ class ThKbInputMethodService :
                         val ic = currentInputConnection ?: return@KeyboardRoot
                         captureUndoSnapshot(coalesceTyping = false)
                         val before = ic.getTextBeforeCursor(96, 0)?.toString().orEmpty()
+                        val shortcodeQuery = if (candidate.confidence >= 999.0) {
+                            KeyboardStateLogic.extractActiveShortcodeQuery(before)
+                        } else {
+                            null
+                        }
                         val activeSwipeTail = swipeAlternativesTail
-                        val isReplacingSwipedWord = activeSwipeTail != null && before.endsWith(activeSwipeTail)
+                        val isReplacingSwipedWord = shortcodeQuery == null &&
+                            activeSwipeTail != null &&
+                            before.endsWith(activeSwipeTail)
                         val (ctxWords, prefix) = suggestionEngine.extractContext(before)
                         val hasLeadingSpace = isReplacingSwipedWord && activeSwipeTail!!.startsWith(" ")
                         val replacementWithSpace = if (hasLeadingSpace) {
@@ -277,10 +318,10 @@ class ThKbInputMethodService :
                         } else {
                             "${candidate.word} "
                         }
-                        val deleteCount = if (isReplacingSwipedWord) {
-                            activeSwipeTail!!.length
-                        } else {
-                            prefix.length
+                        val deleteCount = when {
+                            shortcodeQuery != null -> shortcodeQuery.length + 1
+                            isReplacingSwipedWord -> activeSwipeTail!!.length
+                            else -> prefix.length
                         }
                         ic.beginBatchEdit()
                         try {
@@ -292,7 +333,7 @@ class ThKbInputMethodService :
                         } finally {
                             ic.endBatchEdit()
                         }
-                        if (inputContext != InputContext.PASSWORD && inputContext != InputContext.NUMBER) {
+                        if (shortcodeQuery == null && inputContext != InputContext.PASSWORD && inputContext != InputContext.NUMBER) {
                             val prevWord = ctxWords.lastOrNull().orEmpty()
                             val boost = if (candidate.isLiteral) 10 else 3
                             personalDictionary.learnWord(prevWord, candidate.word, boost)
@@ -354,6 +395,36 @@ class ThKbInputMethodService :
                             lastSpaceCommitMs = now
                         } else {
                             lastSpaceCommitMs = 0L
+                        }
+
+                        if (text == ":" && !isRawInput &&
+                            inputContext != InputContext.PASSWORD &&
+                            inputContext != InputContext.TERMINAL &&
+                            inputContext != InputContext.NUMBER
+                        ) {
+                            val ic = currentInputConnection
+                            val before = ic?.getTextBeforeCursor(40, 0)?.toString().orEmpty()
+                            val code = KeyboardStateLogic.extractActiveShortcodeQuery(before)
+                            val emoji = code?.let { KeyboardStateLogic.exactEmojiShortcode(it) }
+                            if (ic != null && code != null && emoji != null) {
+                                val replacedWith = "$emoji "
+                                captureUndoSnapshot(coalesceTyping = false)
+                                ic.beginBatchEdit()
+                                try {
+                                    ic.finishComposingText()
+                                    ic.deleteSurroundingText(code.length + 1, 0)
+                                    ic.commitText(replacedWith, 1)
+                                } finally {
+                                    ic.endBatchEdit()
+                                }
+                                pendingReplacement = PendingReplacement(
+                                    originalPrefix = ":$code:",
+                                    replacedText = replacedWith,
+                                )
+                                suppressedAutoReplacePrefix = null
+                                refreshSuggestions(effectiveLayoutId, settings)
+                                return@KeyboardRoot
+                            }
                         }
 
                         if (text in AUTO_REPLACE_TRIGGERS) {
@@ -503,6 +574,46 @@ class ThKbInputMethodService :
                         val intent = Intent(this@ThKbInputMethodService, SettingsActivity::class.java)
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         startActivity(intent)
+                    },
+                    ergonomicMode = settings.keyboardErgonomicMode,
+                    floatingOffsetXFraction = settings.floatingOffsetXFraction,
+                    floatingOffsetYDp = settings.floatingOffsetYDp,
+                    themeId = settings.themeId,
+                    remoteHostIp = settings.remoteHostIp,
+                    remoteHostPort = settings.remoteHostPort,
+                    isMusicActive = audioManager?.isMusicActive == true,
+                    onChangeErgonomicMode = { nextMode ->
+                        preferences.setKeyboardErgonomicMode(nextMode)
+                    },
+                    onUpdateFloatingPosition = { xFrac, yDp ->
+                        preferences.setFloatingPosition(xFrac, yDp)
+                    },
+                    onFloatingBoundsChanged = { rect ->
+                        floatingSurfaceBoundsPx = rect
+                    },
+                    onCommitMediaClip = { entry ->
+                        commitMediaClip(entry)
+                    },
+                    onNavigate = { unit, dir, selecting ->
+                        performNavAction(unit, dir, selecting)
+                    },
+                    onSelectAll = {
+                        pendingReplacement = null
+                        currentInputConnection?.performContextMenuAction(android.R.id.selectAll)
+                    },
+                    onCopy = {
+                        currentInputConnection?.performContextMenuAction(android.R.id.copy)
+                    },
+                    onCut = {
+                        pendingReplacement = null
+                        captureUndoSnapshot(coalesceTyping = false)
+                        currentInputConnection?.performContextMenuAction(android.R.id.cut)
+                    },
+                    onMediaAction = { action ->
+                        performMediaAction(action)
+                    },
+                    onSelectRemoteHost = { ip, port ->
+                        preferences.setRemoteHost(ip, port)
                     },
                 )
             }
@@ -760,6 +871,30 @@ class ThKbInputMethodService :
             return
         }
         val before = ic.getTextBeforeCursor(96, 0)
+        val beforeStr = before?.toString().orEmpty()
+        val shortcodeQuery = KeyboardStateLogic.extractActiveShortcodeQuery(beforeStr)
+        if (shortcodeQuery != null) {
+            val directMatches = KeyboardStateLogic.findEmojiShortcodeMatches(shortcodeQuery, 3)
+            val bilingualHits = if (directMatches.size < 3) {
+                SuggestionEngine.searchEmojisBilingual(shortcodeQuery)
+            } else {
+                emptyList()
+            }
+            val combinedEmojis = (directMatches.map { it.second } + bilingualHits)
+                .distinct()
+                .take(3)
+            if (combinedEmojis.isNotEmpty()) {
+                suggestions = combinedEmojis.mapIndexed { idx, emoji ->
+                    SuggestionCandidate(
+                        word = emoji,
+                        confidence = 999.0 + (10 - idx),
+                        isExact = true,
+                        isLiteral = false,
+                    )
+                }
+                return
+            }
+        }
         val (ctxWords, prefix) = suggestionEngine.extractContext(before)
         val capHint = shouldAutoCapAtCurrentCursor(settings.autoCapOnOpen)
         val rawCandidates = suggestionEngine.suggestForInput(
@@ -777,10 +912,19 @@ class ThKbInputMethodService :
     override fun onComputeInsets(outInsets: Insets?) {
         super.onComputeInsets(outInsets)
         if (outInsets == null) return
-        val headroomPx = (TOP_POPUP_HEADROOM_DP * resources.displayMetrics.density).toInt()
-        outInsets.contentTopInsets = headroomPx
-        outInsets.visibleTopInsets = headroomPx
-        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_CONTENT
+        val rect = floatingSurfaceBoundsPx
+        if (activeErgonomicMode == KbSettings.ERGONOMIC_FLOATING && rect != null && !rect.isEmpty) {
+            val totalHeight = (inputComposeView?.height ?: 0).coerceAtLeast(1)
+            outInsets.contentTopInsets = totalHeight
+            outInsets.visibleTopInsets = totalHeight
+            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+            outInsets.touchableRegion.set(rect)
+        } else {
+            val headroomPx = (TOP_POPUP_HEADROOM_DP * resources.displayMetrics.density).toInt()
+            outInsets.contentTopInsets = headroomPx
+            outInsets.visibleTopInsets = headroomPx
+            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_CONTENT
+        }
     }
 
     companion object {
@@ -1254,6 +1398,165 @@ class ThKbInputMethodService :
         val ic = currentInputConnection ?: return false
         val before = ic.getTextBeforeCursor(16, 0)?.toString().orEmpty()
         return KeyboardStateLogic.shouldAutoCapBeforeCursor(before, inputContext, autoCapPref)
+    }
+
+    private fun commitMediaClip(entry: ClipboardEntry) {
+        val ic = currentInputConnection ?: return
+        val editorInfo = currentInputEditorInfo ?: return
+        val uriStr = entry.mediaUri ?: run {
+            commitTextSafe(entry.text)
+            return
+        }
+        val contentUri = runCatching { Uri.parse(uriStr) }.getOrNull() ?: return
+        val mime = entry.mimeType ?: "image/png"
+        val supportedMimes = EditorInfoCompat.getContentMimeTypes(editorInfo)
+        val isSupported = supportedMimes.any {
+            ClipDescription.compareMimeTypes(mime, it)
+        }
+        if (supportedMimes.isNotEmpty() && !isSupported) {
+            Toast.makeText(this, "Current field does not accept $mime", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val contentInfo = InputContentInfoCompat(
+            contentUri,
+            ClipDescription(entry.text, arrayOf(mime)),
+            null,
+        )
+        val committed = InputConnectionCompat.commitContent(
+            ic,
+            editorInfo,
+            contentInfo,
+            InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION,
+            null,
+        )
+        if (!committed) {
+            Toast.makeText(this, "App rejected media paste", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun performNavAction(unit: NavUnit, direction: NavDirection, selecting: Boolean) {
+        val ic = currentInputConnection ?: return
+        ic.finishComposingText()
+
+        fun dispatchArrowKey(keyCode: Int) {
+            val meta = if (selecting) KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON else 0
+            val now = SystemClock.uptimeMillis()
+            ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, meta))
+            ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, meta))
+        }
+
+        if (unit == NavUnit.CHAR && (direction == NavDirection.UP || direction == NavDirection.DOWN)) {
+            dispatchArrowKey(if (direction == NavDirection.UP) KeyEvent.KEYCODE_DPAD_UP else KeyEvent.KEYCODE_DPAD_DOWN)
+            return
+        }
+        if (direction == NavDirection.UP || direction == NavDirection.DOWN) {
+            if (unit == NavUnit.PARAGRAPH) {
+                val movedDir = if (direction == NavDirection.UP) NavDirection.LEFT else NavDirection.RIGHT
+                performNavAction(NavUnit.PARAGRAPH, movedDir, selecting)
+            } else {
+                dispatchArrowKey(if (direction == NavDirection.UP) KeyEvent.KEYCODE_DPAD_UP else KeyEvent.KEYCODE_DPAD_DOWN)
+            }
+            return
+        }
+
+        val extracted = ic.getExtractedText(ExtractedTextRequest(), 0)
+        if (extracted == null || extracted.text == null || extracted.selectionStart < 0) {
+            navSelectionAnchor = null
+            when (direction) {
+                NavDirection.LEFT, NavDirection.START -> dispatchArrowKey(
+                    if (unit == NavUnit.LINE || unit == NavUnit.DOCUMENT) KeyEvent.KEYCODE_MOVE_HOME else KeyEvent.KEYCODE_DPAD_LEFT,
+                )
+                NavDirection.RIGHT, NavDirection.END -> dispatchArrowKey(
+                    if (unit == NavUnit.LINE || unit == NavUnit.DOCUMENT) KeyEvent.KEYCODE_MOVE_END else KeyEvent.KEYCODE_DPAD_RIGHT,
+                )
+                else -> Unit
+            }
+            return
+        }
+
+        val full = extracted.text.toString()
+        val selStart = extracted.selectionStart.coerceIn(0, full.length)
+        val selEnd = extracted.selectionEnd.coerceIn(0, full.length)
+        if (!selecting) {
+            navSelectionAnchor = null
+        } else if (selStart == selEnd) {
+            navSelectionAnchor = selStart
+        } else if (navSelectionAnchor == null) {
+            navSelectionAnchor = selStart
+        }
+
+        val activePos = if (selecting) {
+            val anchor = navSelectionAnchor ?: selStart
+            if (anchor == selStart) selEnd else selStart
+        } else {
+            if (direction == NavDirection.LEFT || direction == NavDirection.START) minOf(selStart, selEnd)
+            else maxOf(selStart, selEnd)
+        }
+
+        val targetPos = when (unit) {
+            NavUnit.CHAR -> if (direction == NavDirection.LEFT) (activePos - 1).coerceAtLeast(0)
+            else (activePos + 1).coerceAtMost(full.length)
+
+            NavUnit.WORD -> if (direction == NavDirection.LEFT) {
+                val delta = KeyboardStateLogic.wordMoveBefore(full.substring(0, activePos))
+                (activePos - delta).coerceAtLeast(0)
+            } else {
+                val delta = KeyboardStateLogic.wordMoveAfter(full.substring(activePos))
+                (activePos + delta).coerceAtMost(full.length)
+            }
+
+            NavUnit.PHRASE -> if (direction == NavDirection.LEFT) {
+                val delta = KeyboardStateLogic.phraseMoveBefore(full.substring(0, activePos))
+                (activePos - delta).coerceAtLeast(0)
+            } else {
+                val delta = KeyboardStateLogic.phraseMoveAfter(full.substring(activePos))
+                (activePos + delta).coerceAtMost(full.length)
+            }
+
+            NavUnit.PARAGRAPH -> if (direction == NavDirection.LEFT) {
+                val delta = KeyboardStateLogic.paragraphDeleteCountBefore(full.substring(0, activePos))
+                (activePos - delta).coerceAtLeast(0)
+            } else {
+                val delta = KeyboardStateLogic.paragraphDeleteCountAfter(full.substring(activePos))
+                (activePos + delta).coerceAtMost(full.length)
+            }
+
+            NavUnit.LINE -> if (direction == NavDirection.START || direction == NavDirection.LEFT) {
+                val prevNl = full.lastIndexOf('\n', startIndex = (activePos - 1).coerceAtLeast(0))
+                if (prevNl < 0) 0 else prevNl + 1
+            } else {
+                val nextNl = full.indexOf('\n', startIndex = activePos)
+                if (nextNl < 0) full.length else nextNl
+            }
+
+            NavUnit.DOCUMENT -> if (direction == NavDirection.START || direction == NavDirection.LEFT) 0 else full.length
+        }
+
+        if (selecting) {
+            val anchor = navSelectionAnchor ?: selStart
+            ic.setSelection(anchor, targetPos)
+        } else {
+            ic.setSelection(targetPos, targetPos)
+        }
+    }
+
+    private fun performMediaAction(action: MediaControlAction) {
+        val am = audioManager ?: return
+        fun sendMediaKey(keyCode: Int) {
+            val now = SystemClock.uptimeMillis()
+            am.dispatchMediaKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0))
+            am.dispatchMediaKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0))
+        }
+        when (action) {
+            MediaControlAction.PLAY_PAUSE -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+            MediaControlAction.PREVIOUS -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+            MediaControlAction.NEXT -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
+            MediaControlAction.REWIND -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_REWIND)
+            MediaControlAction.FAST_FORWARD -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)
+            MediaControlAction.VOL_DOWN -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
+            MediaControlAction.VOL_UP -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
+            MediaControlAction.MUTE -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, AudioManager.FLAG_SHOW_UI)
+        }
     }
 
     private fun toggleSelectionCase(): Boolean {

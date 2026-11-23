@@ -1,0 +1,774 @@
+package com.thamnis.thkb.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.automirrored.outlined.Backspace
+import androidx.compose.material.icons.automirrored.outlined.KeyboardReturn
+import androidx.compose.material.icons.automirrored.outlined.VolumeOff
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.ContentCut
+import androidx.compose.material.icons.outlined.ContentPaste
+import androidx.compose.material.icons.outlined.FastForward
+import androidx.compose.material.icons.outlined.FastRewind
+import androidx.compose.material.icons.outlined.FirstPage
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.LastPage
+import androidx.compose.material.icons.outlined.Mouse
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.Send
+import androidx.compose.material.icons.outlined.SkipNext
+import androidx.compose.material.icons.outlined.SkipPrevious
+import androidx.compose.material.icons.outlined.VolumeDown
+import androidx.compose.material.icons.outlined.WifiFind
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.thamnis.thkb.data.CrossDevicePeer
+import com.thamnis.thkb.data.CrossDeviceProtocol
+import com.thamnis.thkb.data.PeerProtocol
+import com.thamnis.thkb.data.RemoteInputClient
+import com.thamnis.thkb.ime.MediaControlAction
+import com.thamnis.thkb.ime.NavDirection
+import com.thamnis.thkb.ime.NavUnit
+import kotlinx.coroutines.launch
+
+@Composable
+internal fun NavigationPanel(
+    panelHeightDp: Float,
+    onNavigate: (NavUnit, NavDirection, Boolean) -> Unit,
+    onSelectAll: () -> Unit,
+    onCopy: () -> Unit,
+    onCut: () -> Unit,
+    onPaste: () -> Unit,
+    onKeyFeedback: () -> Unit,
+) {
+    var selecting by remember { mutableStateOf(false) }
+    var unit by remember { mutableStateOf(NavUnit.WORD) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(panelHeightDp.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // Top row: Move/Select toggle + Unit pills
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CategoryChip(
+                label = if (selecting) "Select: ON" else "Move",
+                active = selecting,
+                onClick = {
+                    onKeyFeedback()
+                    selecting = !selecting
+                },
+            )
+            listOf(
+                NavUnit.CHAR to "Letter",
+                NavUnit.WORD to "Word",
+                NavUnit.PHRASE to "Phrase",
+                NavUnit.PARAGRAPH to "Para",
+            ).forEach { (itemUnit, label) ->
+                CategoryChip(
+                    label = label,
+                    active = unit == itemUnit,
+                    onClick = {
+                        onKeyFeedback()
+                        unit = itemUnit
+                    },
+                )
+            }
+        }
+
+        // Main D-Pad + Home/End cluster
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // Left: Home / End / Doc Start / Doc End
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    UtilityActionTile(
+                        label = "Home",
+                        icon = Icons.Outlined.FirstPage,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        onClick = {
+                            onKeyFeedback()
+                            onNavigate(NavUnit.LINE, NavDirection.START, selecting)
+                        },
+                    )
+                    UtilityActionTile(
+                        label = "End",
+                        icon = Icons.Outlined.LastPage,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        onClick = {
+                            onKeyFeedback()
+                            onNavigate(NavUnit.LINE, NavDirection.END, selecting)
+                        },
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    UtilityActionTile(
+                        label = "Top",
+                        icon = Icons.Outlined.KeyboardArrowUp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        onClick = {
+                            onKeyFeedback()
+                            onNavigate(NavUnit.DOCUMENT, NavDirection.START, selecting)
+                        },
+                    )
+                    UtilityActionTile(
+                        label = "Bottom",
+                        icon = Icons.Outlined.KeyboardArrowDown,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        onClick = {
+                            onKeyFeedback()
+                            onNavigate(NavUnit.DOCUMENT, NavDirection.END, selecting)
+                        },
+                    )
+                }
+            }
+
+            // Right: Directional Cursor Pad
+            Column(
+                modifier = Modifier
+                    .weight(1.25f)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    UtilityActionTile(
+                        label = null,
+                        icon = Icons.AutoMirrored.Outlined.ArrowBack,
+                        accent = selecting,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        onClick = {
+                            onKeyFeedback()
+                            onNavigate(unit, NavDirection.LEFT, selecting)
+                        },
+                    )
+                    UtilityActionTile(
+                        label = null,
+                        icon = Icons.Outlined.KeyboardArrowUp,
+                        accent = selecting,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        onClick = {
+                            onKeyFeedback()
+                            onNavigate(unit, NavDirection.UP, selecting)
+                        },
+                    )
+                    UtilityActionTile(
+                        label = null,
+                        icon = Icons.AutoMirrored.Outlined.ArrowForward,
+                        accent = selecting,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        onClick = {
+                            onKeyFeedback()
+                            onNavigate(unit, NavDirection.RIGHT, selecting)
+                        },
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    UtilityActionTile(
+                        label = null,
+                        icon = Icons.Outlined.KeyboardArrowDown,
+                        accent = selecting,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        onClick = {
+                            onKeyFeedback()
+                            onNavigate(unit, NavDirection.DOWN, selecting)
+                        },
+                    )
+                }
+            }
+        }
+
+        // Bottom clipboard actions row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            UtilityActionTile(
+                label = "All",
+                icon = Icons.Outlined.SelectAll,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                onClick = {
+                    onKeyFeedback()
+                    onSelectAll()
+                },
+            )
+            UtilityActionTile(
+                label = "Copy",
+                icon = Icons.Outlined.ContentCopy,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                onClick = {
+                    onKeyFeedback()
+                    onCopy()
+                },
+            )
+            UtilityActionTile(
+                label = "Cut",
+                icon = Icons.Outlined.ContentCut,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                onClick = {
+                    onKeyFeedback()
+                    onCut()
+                },
+            )
+            UtilityActionTile(
+                label = "Paste",
+                icon = Icons.Outlined.ContentPaste,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                onClick = {
+                    onKeyFeedback()
+                    onPaste()
+                },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun MediaControlPanel(
+    panelHeightDp: Float,
+    isMusicActive: Boolean,
+    onMediaAction: (MediaControlAction) -> Unit,
+    onKeyFeedback: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(panelHeightDp.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = if (isMusicActive) "System Media Active" else "System Media Controls",
+            color = if (isMusicActive) ReturnBgColor else HintTextColor,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+        )
+
+        // Main transport controls
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            UtilityRoundButton(
+                icon = Icons.Outlined.FastRewind,
+                description = "Rewind",
+                sizeDp = 44,
+                onClick = {
+                    onKeyFeedback()
+                    onMediaAction(MediaControlAction.REWIND)
+                },
+            )
+            UtilityRoundButton(
+                icon = Icons.Outlined.SkipPrevious,
+                description = "Previous",
+                sizeDp = 48,
+                onClick = {
+                    onKeyFeedback()
+                    onMediaAction(MediaControlAction.PREVIOUS)
+                },
+            )
+            Box(
+                modifier = Modifier
+                    .size(62.dp)
+                    .clip(CircleShape)
+                    .background(ReturnBgColor)
+                    .clickable {
+                        onKeyFeedback()
+                        onMediaAction(MediaControlAction.PLAY_PAUSE)
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.PlayArrow,
+                    contentDescription = "Play / Pause",
+                    tint = ReturnFgColor,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+            UtilityRoundButton(
+                icon = Icons.Outlined.SkipNext,
+                description = "Next",
+                sizeDp = 48,
+                onClick = {
+                    onKeyFeedback()
+                    onMediaAction(MediaControlAction.NEXT)
+                },
+            )
+            UtilityRoundButton(
+                icon = Icons.Outlined.FastForward,
+                description = "Fast Forward",
+                sizeDp = 44,
+                onClick = {
+                    onKeyFeedback()
+                    onMediaAction(MediaControlAction.FAST_FORWARD)
+                },
+            )
+        }
+
+        // System volume controls
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(42.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            UtilityActionTile(
+                label = "Vol -",
+                icon = Icons.Outlined.VolumeDown,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                onClick = {
+                    onKeyFeedback()
+                    onMediaAction(MediaControlAction.VOL_DOWN)
+                },
+            )
+            UtilityActionTile(
+                label = "Mute",
+                icon = Icons.AutoMirrored.Outlined.VolumeOff,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                onClick = {
+                    onKeyFeedback()
+                    onMediaAction(MediaControlAction.MUTE)
+                },
+            )
+            UtilityActionTile(
+                label = "Vol +",
+                icon = Icons.AutoMirrored.Outlined.VolumeUp,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                onClick = {
+                    onKeyFeedback()
+                    onMediaAction(MediaControlAction.VOL_UP)
+                },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun RemoteControlPanel(
+    panelHeightDp: Float,
+    savedHostIp: String,
+    savedHostPort: Int,
+    onSelectHost: (String, Int) -> Unit,
+    onKeyFeedback: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var discoveredPeers by remember { mutableStateOf<List<CrossDevicePeer>>(emptyList()) }
+    var isScanning by remember { mutableStateOf(false) }
+    var draftText by remember { mutableStateOf("") }
+    var activeHost by remember(savedHostIp) { mutableStateOf(savedHostIp) }
+    var activePort by remember(savedHostPort) { mutableStateOf(savedHostPort) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(panelHeightDp.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        // Peer bar + Scan Wi-Fi
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(32.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Mouse,
+                    contentDescription = null,
+                    tint = if (activeHost.isNotEmpty()) ReturnBgColor else HintTextColor,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = if (activeHost.isNotEmpty()) "$activeHost:$activePort" else "Set host in Settings or Scan Wi-Fi",
+                    color = if (activeHost.isNotEmpty()) ToolbarTextColor else HintTextColor,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            if (discoveredPeers.isNotEmpty()) {
+                val first = discoveredPeers.first()
+                CategoryChip(
+                    label = first.name,
+                    active = activeHost == first.ip,
+                    onClick = {
+                        onKeyFeedback()
+                        activeHost = first.ip
+                        activePort = first.port
+                        onSelectHost(first.ip, first.port)
+                    },
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+
+            CategoryChip(
+                label = if (isScanning) "Scanning..." else "Scan Wi-Fi",
+                active = !isScanning,
+                onClick = {
+                    if (!isScanning) {
+                        onKeyFeedback()
+                        isScanning = true
+                        scope.launch {
+                            val peers = CrossDeviceProtocol.discoverAllPeers(context, 1200L)
+                                .filter { it.protocol == PeerProtocol.THKB_REMOTE }
+                            discoveredPeers = peers
+                            if (peers.isNotEmpty()) {
+                                activeHost = peers.first().ip
+                                activePort = peers.first().port
+                                onSelectHost(activeHost, activePort)
+                            }
+                            isScanning = false
+                        }
+                    }
+                },
+            )
+        }
+
+        // Trackpad surface + vertical scroll rail
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(KeyBgColor)
+                    .border(1.dp, PillKeyBgColor, RoundedCornerShape(12.dp))
+                    .pointerInput(activeHost, activePort) {
+                        detectTapGestures(
+                            onTap = {
+                                onKeyFeedback()
+                                RemoteInputClient.sendClick(activeHost, activePort, "left")
+                            },
+                            onDoubleTap = {
+                                onKeyFeedback()
+                                RemoteInputClient.sendClick(activeHost, activePort, "right")
+                            },
+                        )
+                    }
+                    .pointerInput(activeHost, activePort) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            RemoteInputClient.sendMove(
+                                activeHost,
+                                activePort,
+                                dragAmount.x * 1.45f,
+                                dragAmount.y * 1.45f,
+                            )
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (activeHost.isEmpty()) "No companion connected" else "Touchpad • Tap: Left Click • 2xTap: Right Click",
+                    color = HintTextColor,
+                    fontSize = 11.5.sp,
+                )
+            }
+
+            // Scroll rail
+            Box(
+                modifier = Modifier
+                    .width(38.dp)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(ActionKeyBgColor)
+                    .pointerInput(activeHost, activePort) {
+                        var accum = 0f
+                        detectDragGestures(
+                            onDragEnd = { accum = 0f },
+                            onDragCancel = { accum = 0f },
+                        ) { change, dragAmount ->
+                            change.consume()
+                            accum += dragAmount.y
+                            if (kotlin.math.abs(accum) >= 24f) {
+                                val steps = (accum / 24f).toInt()
+                                accum -= steps * 24f
+                                RemoteInputClient.sendScroll(activeHost, activePort, steps.toFloat())
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "⇅",
+                    color = HintTextColor,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+
+        // Mouse buttons + quick keys row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(34.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            listOf(
+                "Left" to { RemoteInputClient.sendClick(activeHost, activePort, "left") },
+                "Right" to { RemoteInputClient.sendClick(activeHost, activePort, "right") },
+                "Esc" to { RemoteInputClient.sendSpecialKey(activeHost, activePort, "esc") },
+                "Tab" to { RemoteInputClient.sendSpecialKey(activeHost, activePort, "tab") },
+                "⌫" to { RemoteInputClient.sendSpecialKey(activeHost, activePort, "backspace") },
+                "⏎" to { RemoteInputClient.sendSpecialKey(activeHost, activePort, "enter") },
+            ).forEach { (label, action) ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(PillKeyBgColor)
+                        .clickable {
+                            onKeyFeedback()
+                            action()
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = label,
+                        color = KeyTextColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+        }
+
+        // Direct text-to-PC composer
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(KeyBgColor)
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            BasicTextField(
+                value = draftText,
+                onValueChange = { draftText = it },
+                singleLine = true,
+                textStyle = TextStyle(color = KeyTextColor, fontSize = 13.sp),
+                cursorBrush = SolidColor(ReturnBgColor),
+                modifier = Modifier.weight(1f),
+                decorationBox = { inner ->
+                    if (draftText.isEmpty()) {
+                        Text(
+                            text = "Send text to computer...",
+                            color = HintTextColor,
+                            fontSize = 12.5.sp,
+                        )
+                    }
+                    inner()
+                },
+            )
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(if (draftText.isNotEmpty()) ReturnBgColor else ActionKeyBgColor)
+                    .clickable(enabled = draftText.isNotEmpty() && activeHost.isNotEmpty()) {
+                        onKeyFeedback()
+                        RemoteInputClient.sendText(activeHost, activePort, draftText)
+                        draftText = ""
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Send,
+                    contentDescription = "Send to PC",
+                    tint = if (draftText.isNotEmpty()) ReturnFgColor else HintTextColor,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UtilityActionTile(
+    label: String?,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    accent: Boolean = false,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (accent) ReturnBgColor else KeyBgColor)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label ?: "Action",
+                tint = if (accent) ReturnFgColor else KeyTextColor,
+                modifier = Modifier.size(17.dp),
+            )
+            if (label != null) {
+                Text(
+                    text = label,
+                    color = if (accent) ReturnFgColor else KeyTextColor,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UtilityRoundButton(
+    icon: ImageVector,
+    description: String,
+    sizeDp: Int,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(sizeDp.dp)
+            .clip(CircleShape)
+            .background(KeyBgColor)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = description,
+            tint = KeyTextColor,
+            modifier = Modifier.size((sizeDp * 0.48f).dp),
+        )
+    }
+}

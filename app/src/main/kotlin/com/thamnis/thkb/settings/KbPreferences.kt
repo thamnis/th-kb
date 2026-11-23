@@ -31,6 +31,12 @@ data class KbSettings(
     val autocompleteMode: String = AUTOCOMPLETE_MODE_ADVANCED,
     val ivorianFrenchEnabled: Boolean = true,
     val dismissedGestureTip: Boolean = false,
+    val keyboardErgonomicMode: String = ERGONOMIC_NORMAL,
+    val floatingOffsetXFraction: Float = 0.5f,
+    val floatingOffsetYDp: Float = 96f,
+    val themeId: String = THEME_DARK_GRAPHITE,
+    val remoteHostIp: String = "",
+    val remoteHostPort: Int = DEFAULT_REMOTE_PORT,
 ) {
     companion object {
         const val DEFAULT_LAYOUT_ID = "qwerty_en"
@@ -40,6 +46,18 @@ data class KbSettings(
         const val AUTOCOMPLETE_MODE_STANDARD = "autocomplete"
         const val AUTOCOMPLETE_MODE_ADVANCED = "advanced_autocomplete"
         const val AUTOCOMPLETE_MODE_OFF = "off"
+        const val ERGONOMIC_NORMAL = "normal"
+        const val ERGONOMIC_SPLIT = "split"
+        const val ERGONOMIC_ONE_HAND_LEFT = "one_hand_left"
+        const val ERGONOMIC_ONE_HAND_RIGHT = "one_hand_right"
+        const val ERGONOMIC_FLOATING = "floating"
+        const val THEME_DARK_GRAPHITE = "dark_graphite"
+        const val THEME_MATERIAL_YOU = "material_you"
+        const val THEME_MIDNIGHT_AMOLED = "midnight_amoled"
+        const val THEME_WARM_PAPER = "warm_paper"
+        const val THEME_OCEAN_SLATE = "ocean_slate"
+        const val THEME_FOREST_SAGE = "forest_sage"
+        const val DEFAULT_REMOTE_PORT = 55677
         val DEFAULT_FAVORITES = setOf("😂", "❤️", "👍", "🔥", "🙏", "(^_^)", "¯\\_(ツ)_/¯")
     }
 }
@@ -139,6 +157,32 @@ class KbPreferences(context: Context) {
         _settings.value = readSettings()
     }
 
+    fun setKeyboardErgonomicMode(mode: String) {
+        prefs.edit().putString(KEY_ERGONOMIC_MODE, mode).apply()
+        _settings.value = readSettings()
+    }
+
+    fun setFloatingPosition(xFraction: Float, yDp: Float) {
+        prefs.edit()
+            .putFloat(KEY_FLOATING_X_FRACTION, xFraction.coerceIn(0f, 1f))
+            .putFloat(KEY_FLOATING_Y_DP, yDp.coerceIn(16f, 420f))
+            .apply()
+        _settings.value = readSettings()
+    }
+
+    fun setThemeId(themeId: String) {
+        prefs.edit().putString(KEY_THEME_ID, themeId).apply()
+        _settings.value = readSettings()
+    }
+
+    fun setRemoteHost(ip: String, port: Int = KbSettings.DEFAULT_REMOTE_PORT) {
+        prefs.edit()
+            .putString(KEY_REMOTE_HOST_IP, ip.trim())
+            .putInt(KEY_REMOTE_HOST_PORT, port.coerceIn(1024, 65535))
+            .apply()
+        _settings.value = readSettings()
+    }
+
     fun toggleFavoriteItem(item: String) {
         val current = _settings.value.favoriteItems.toMutableSet()
         if (!current.add(item)) {
@@ -162,8 +206,7 @@ class KbPreferences(context: Context) {
         todoTasks: List<TodoTask> = emptyList(),
     ): String = KbBackupCodec.encode(_settings.value, pinnedClips, todoTasks)
 
-    fun importFromJson(jsonText: String): Result<List<ClipboardEntry>> = runCatching {
-        val (restored, pinnedClips, _) = KbBackupCodec.decodeFull(jsonText)
+    private fun applySettingsToPrefs(restored: KbSettings) {
         prefs.edit()
             .putString(KEY_LAYOUT_ID, restored.layoutId)
             .putBoolean(KEY_HAPTICS, restored.hapticsEnabled)
@@ -182,33 +225,21 @@ class KbPreferences(context: Context) {
             .putBoolean(KEY_GLIDE_CHAR_BY_CHAR, restored.glideCharByChar)
             .putString(KEY_AUTOCOMPLETE_MODE, restored.autocompleteMode)
             .putBoolean(KEY_IVORIAN_FRENCH_ENABLED, restored.ivorianFrenchEnabled)
+            .putString(KEY_ERGONOMIC_MODE, restored.keyboardErgonomicMode)
+            .putString(KEY_THEME_ID, restored.themeId)
             .apply()
         _settings.value = readSettings()
+    }
+
+    fun importFromJson(jsonText: String): Result<List<ClipboardEntry>> = runCatching {
+        val (restored, pinnedClips, _) = KbBackupCodec.decodeFull(jsonText)
+        applySettingsToPrefs(restored)
         pinnedClips
     }
 
     fun importFromJsonWithTodos(jsonText: String): Result<Pair<List<ClipboardEntry>, List<TodoTask>>> = runCatching {
         val (restored, pinnedClips, todoTasks) = KbBackupCodec.decodeFull(jsonText)
-        prefs.edit()
-            .putString(KEY_LAYOUT_ID, restored.layoutId)
-            .putBoolean(KEY_HAPTICS, restored.hapticsEnabled)
-            .putBoolean(KEY_SOUND, restored.soundEnabled)
-            .putBoolean(KEY_AUTO_CAP_ON_OPEN, restored.autoCapOnOpen)
-            .putBoolean(KEY_SHOW_KEY_PREVIEW, restored.showKeyPreview)
-            .putLong(KEY_LONG_PRESS_DELAY_MS, restored.longPressDelayMs)
-            .putLong(KEY_RAPID_DELETE_DELAY_MS, restored.rapidDeleteDelayMs)
-            .putBoolean(KEY_DELETE_GESTURES, restored.deleteGesturesEnabled)
-            .putBoolean(KEY_RESET_FORWARD_DELETE, restored.resetForwardDeleteOnChar)
-            .putInt(KEY_EMOJI_GRID_COLUMNS, restored.emojiGridColumns)
-            .putStringSet(KEY_FAVORITES, restored.favoriteItems)
-            .putString(KEY_RECENT_EMOJIS, restored.recentEmojis.joinToString("\u001F"))
-            .putBoolean(KEY_SUGGESTIONS_ENABLED, restored.suggestionsEnabled)
-            .putBoolean(KEY_GLIDE_TYPING_ENABLED, restored.glideTypingEnabled)
-            .putBoolean(KEY_GLIDE_CHAR_BY_CHAR, restored.glideCharByChar)
-            .putString(KEY_AUTOCOMPLETE_MODE, restored.autocompleteMode)
-            .putBoolean(KEY_IVORIAN_FRENCH_ENABLED, restored.ivorianFrenchEnabled)
-            .apply()
-        _settings.value = readSettings()
+        applySettingsToPrefs(restored)
         pinnedClips to todoTasks
     }
 
@@ -237,6 +268,14 @@ class KbPreferences(context: Context) {
             ?: KbSettings.AUTOCOMPLETE_MODE_ADVANCED,
         ivorianFrenchEnabled = prefs.getBoolean(KEY_IVORIAN_FRENCH_ENABLED, true),
         dismissedGestureTip = prefs.getBoolean(KEY_DISMISSED_GESTURE_TIP, false),
+        keyboardErgonomicMode = prefs.getString(KEY_ERGONOMIC_MODE, KbSettings.ERGONOMIC_NORMAL)
+            ?: KbSettings.ERGONOMIC_NORMAL,
+        floatingOffsetXFraction = prefs.getFloat(KEY_FLOATING_X_FRACTION, 0.5f).coerceIn(0f, 1f),
+        floatingOffsetYDp = prefs.getFloat(KEY_FLOATING_Y_DP, 96f).coerceIn(16f, 420f),
+        themeId = prefs.getString(KEY_THEME_ID, KbSettings.THEME_DARK_GRAPHITE)
+            ?: KbSettings.THEME_DARK_GRAPHITE,
+        remoteHostIp = prefs.getString(KEY_REMOTE_HOST_IP, "") ?: "",
+        remoteHostPort = prefs.getInt(KEY_REMOTE_HOST_PORT, KbSettings.DEFAULT_REMOTE_PORT),
     )
 
     companion object {
@@ -259,6 +298,12 @@ class KbPreferences(context: Context) {
         private const val KEY_AUTOCOMPLETE_MODE = "autocomplete_mode"
         private const val KEY_IVORIAN_FRENCH_ENABLED = "ivorian_french_enabled"
         private const val KEY_DISMISSED_GESTURE_TIP = "dismissed_gesture_tip"
+        private const val KEY_ERGONOMIC_MODE = "keyboard_ergonomic_mode"
+        private const val KEY_FLOATING_X_FRACTION = "floating_x_fraction"
+        private const val KEY_FLOATING_Y_DP = "floating_y_dp"
+        private const val KEY_THEME_ID = "theme_id"
+        private const val KEY_REMOTE_HOST_IP = "remote_host_ip"
+        private const val KEY_REMOTE_HOST_PORT = "remote_host_port"
     }
 }
 
@@ -308,6 +353,8 @@ object KbBackupCodec {
             appendLine("  \"glideCharByChar\": ${settings.glideCharByChar},")
             appendLine("  \"autocompleteMode\": ${esc(settings.autocompleteMode)},")
             appendLine("  \"ivorianFrenchEnabled\": ${settings.ivorianFrenchEnabled},")
+            appendLine("  \"keyboardErgonomicMode\": ${esc(settings.keyboardErgonomicMode)},")
+            appendLine("  \"themeId\": ${esc(settings.themeId)},")
             appendLine("  \"favoriteItems\": ${arr(settings.favoriteItems)},")
             appendLine("  \"recentEmojis\": ${arr(settings.recentEmojis)},")
             appendLine("  \"pinnedClips\": ${arr(pinnedClips.filter { it.pinned }.map { it.text })},")
@@ -417,6 +464,8 @@ object KbBackupCodec {
             glideCharByChar = boolVal("glideCharByChar", false),
             autocompleteMode = stringVal("autocompleteMode", KbSettings.AUTOCOMPLETE_MODE_ADVANCED),
             ivorianFrenchEnabled = boolVal("ivorianFrenchEnabled", true),
+            keyboardErgonomicMode = stringVal("keyboardErgonomicMode", KbSettings.ERGONOMIC_NORMAL),
+            themeId = stringVal("themeId", KbSettings.THEME_DARK_GRAPHITE),
         )
         return DecodedBackup(settings, pinnedClips, todoTasks)
     }

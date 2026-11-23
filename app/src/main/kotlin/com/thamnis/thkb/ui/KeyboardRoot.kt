@@ -30,6 +30,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
@@ -75,6 +76,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Done
+import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.EmojiFoodBeverage
@@ -87,6 +89,11 @@ import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.MicOff
+import androidx.compose.material.icons.outlined.Mouse
+import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.OpenInFull
+import androidx.compose.material.icons.outlined.OpenWith
+import androidx.compose.material.icons.outlined.PictureInPictureAlt
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Schedule
@@ -96,14 +103,18 @@ import androidx.compose.material.icons.outlined.SentimentNeutral
 import androidx.compose.material.icons.outlined.SentimentSatisfied
 import androidx.compose.material.icons.outlined.SentimentVerySatisfied
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.ViewColumn
 import androidx.compose.material.icons.outlined.Whatshot
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material.icons.outlined.DirectionsCar
 import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.runtime.LaunchedEffect
@@ -139,7 +150,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -162,6 +175,10 @@ import com.thamnis.thkb.engine.SuggestionEngine
 import com.thamnis.thkb.engine.SwipeTrailPoint
 import com.thamnis.thkb.ime.AccentPopupState
 import com.thamnis.thkb.ime.InputContext
+import com.thamnis.thkb.ime.MediaControlAction
+import com.thamnis.thkb.ime.NavDirection
+import com.thamnis.thkb.ime.NavUnit
+import com.thamnis.thkb.settings.KbSettings
 import com.thamnis.thkb.ime.KeyPreviewState
 import com.thamnis.thkb.ime.KeyboardLayer
 import com.thamnis.thkb.ime.KeyboardStateLogic
@@ -264,6 +281,182 @@ fun KeyboardRoot(
     onCancelVoiceTyping: () -> Unit = {},
     onToggleVoiceLanguage: () -> Unit = {},
     onLaunchSystemVoicePopup: () -> Unit = {},
+    ergonomicMode: String = KbSettings.ERGONOMIC_NORMAL,
+    floatingOffsetXFraction: Float = 0.5f,
+    floatingOffsetYDp: Float = 96f,
+    themeId: String = KbSettings.THEME_DARK_GRAPHITE,
+    remoteHostIp: String = "",
+    remoteHostPort: Int = KbSettings.DEFAULT_REMOTE_PORT,
+    isMusicActive: Boolean = false,
+    onChangeErgonomicMode: (String) -> Unit = {},
+    onUpdateFloatingPosition: (Float, Float) -> Unit = { _, _ -> },
+    onFloatingBoundsChanged: (android.graphics.Rect?) -> Unit = {},
+    onCommitMediaClip: (ClipboardEntry) -> Unit = {},
+    onNavigate: (NavUnit, NavDirection, Boolean) -> Unit = { _, _, _ -> },
+    onSelectAll: () -> Unit = {},
+    onCopy: () -> Unit = {},
+    onCut: () -> Unit = {},
+    onMediaAction: (MediaControlAction) -> Unit = {},
+    onSelectRemoteHost: (String, Int) -> Unit = { _, _ -> },
+) {
+    val context = LocalContext.current
+    val activePalette = remember(themeId, context) { resolveKbPalette(themeId, context) }
+    CompositionLocalProvider(LocalKbPalette provides activePalette) {
+    KeyboardRootContent(
+        inputSessionKey = inputSessionKey,
+        layoutId = layoutId,
+        inputContext = inputContext,
+        autoCapOnOpen = autoCapOnOpen,
+        showKeyPreview = showKeyPreview,
+        longPressDelayMs = longPressDelayMs,
+        rapidDeleteDelayMs = rapidDeleteDelayMs,
+        deleteGesturesEnabled = deleteGesturesEnabled,
+        resetForwardDeleteOnChar = resetForwardDeleteOnChar,
+        emojiGridColumns = emojiGridColumns,
+        returnAction = returnAction,
+        assets = assets,
+        clipboardEntries = clipboardEntries,
+        todoTasks = todoTasks,
+        favoriteItems = favoriteItems,
+        recentEmojis = recentEmojis,
+        onToggleFavorite = onToggleFavorite,
+        onRecordRecentEmoji = onRecordRecentEmoji,
+        onPinClip = onPinClip,
+        onDeleteClip = onDeleteClip,
+        onClearUnpinnedClips = onClearUnpinnedClips,
+        onAddTodoTask = onAddTodoTask,
+        onToggleTodoTask = onToggleTodoTask,
+        onDeleteTodoTask = onDeleteTodoTask,
+        onClearCompletedTodoTasks = onClearCompletedTodoTasks,
+        onKeyFeedback = onKeyFeedback,
+        onLightHaptic = onLightHaptic,
+        onGestureHaptic = onGestureHaptic,
+        onToggleSelectionCase = onToggleSelectionCase,
+        onCommitText = onCommitText,
+        onBackspace = onBackspace,
+        onForwardDelete = onForwardDelete,
+        onDeleteWord = onDeleteWord,
+        onDeleteParagraph = onDeleteParagraph,
+        onSendKeyEvent = onSendKeyEvent,
+        onSendCtrlKey = onSendCtrlKey,
+        onReturn = onReturn,
+        onPaste = onPaste,
+        shouldAutoCapNow = shouldAutoCapNow,
+        onOpenSettings = onOpenSettings,
+        onUndo = onUndo,
+        onRedo = onRedo,
+        onMoveCursor = onMoveCursor,
+        onMoveCursorVertical = onMoveCursorVertical,
+        suggestions = suggestions,
+        onSelectSuggestion = onSelectSuggestion,
+        onBlockSuggestion = onBlockSuggestion,
+        glideTypingEnabled = glideTypingEnabled,
+        glideCharByChar = glideCharByChar,
+        onToggleGlideMode = onToggleGlideMode,
+        onToggleLayout = onToggleLayout,
+        onSwipeWord = onSwipeWord,
+        voiceUiState = voiceUiState,
+        onStartVoiceTyping = onStartVoiceTyping,
+        onStopVoiceTyping = onStopVoiceTyping,
+        onCancelVoiceTyping = onCancelVoiceTyping,
+        onToggleVoiceLanguage = onToggleVoiceLanguage,
+        onLaunchSystemVoicePopup = onLaunchSystemVoicePopup,
+        ergonomicMode = ergonomicMode,
+        floatingOffsetXFraction = floatingOffsetXFraction,
+        floatingOffsetYDp = floatingOffsetYDp,
+        remoteHostIp = remoteHostIp,
+        remoteHostPort = remoteHostPort,
+        isMusicActive = isMusicActive,
+        onChangeErgonomicMode = onChangeErgonomicMode,
+        onUpdateFloatingPosition = onUpdateFloatingPosition,
+        onFloatingBoundsChanged = onFloatingBoundsChanged,
+        onCommitMediaClip = onCommitMediaClip,
+        onNavigate = onNavigate,
+        onSelectAll = onSelectAll,
+        onCopy = onCopy,
+        onCut = onCut,
+        onMediaAction = onMediaAction,
+        onSelectRemoteHost = onSelectRemoteHost,
+    )
+    }
+}
+
+@Composable
+private fun KeyboardRootContent(
+    inputSessionKey: Int = 0,
+    layoutId: String,
+    inputContext: InputContext = InputContext.NORMAL,
+    autoCapOnOpen: Boolean = true,
+    showKeyPreview: Boolean = true,
+    longPressDelayMs: Long = 450L,
+    rapidDeleteDelayMs: Long = 580L,
+    deleteGesturesEnabled: Boolean = true,
+    resetForwardDeleteOnChar: Boolean = false,
+    emojiGridColumns: Int = 7,
+    returnAction: ReturnAction,
+    assets: AssetRepository,
+    clipboardEntries: List<ClipboardEntry> = emptyList(),
+    todoTasks: List<TodoTask> = emptyList(),
+    favoriteItems: Set<String> = emptySet(),
+    recentEmojis: List<String> = emptyList(),
+    onToggleFavorite: (String) -> Unit = {},
+    onRecordRecentEmoji: (String) -> Unit = {},
+    onPinClip: (String) -> Unit = {},
+    onDeleteClip: (String) -> Unit = {},
+    onClearUnpinnedClips: () -> Unit = {},
+    onAddTodoTask: (String) -> Unit = {},
+    onToggleTodoTask: (String) -> Unit = {},
+    onDeleteTodoTask: (String) -> Unit = {},
+    onClearCompletedTodoTasks: () -> Unit = {},
+    onKeyFeedback: () -> Unit,
+    onLightHaptic: () -> Unit = {},
+    onGestureHaptic: () -> Unit = {},
+    onToggleSelectionCase: () -> Boolean = { false },
+    onCommitText: (String) -> Unit,
+    onBackspace: () -> Unit,
+    onForwardDelete: () -> Unit = {},
+    onDeleteWord: (Boolean) -> Unit = {},
+    onDeleteParagraph: (Boolean) -> Unit = {},
+    onSendKeyEvent: (Int) -> Unit = {},
+    onSendCtrlKey: (Char) -> Unit = {},
+    onReturn: () -> Unit,
+    onPaste: () -> Unit,
+    onMoveCursor: (Int) -> Unit,
+    onMoveCursorVertical: (Int) -> Unit = {},
+    shouldAutoCapNow: () -> Boolean = { false },
+    onOpenSettings: () -> Unit,
+    onUndo: () -> Unit = {},
+    onRedo: () -> Unit = {},
+    suggestions: List<SuggestionCandidate> = emptyList(),
+    onSelectSuggestion: (SuggestionCandidate) -> Unit = {},
+    onBlockSuggestion: (String) -> Unit = {},
+    glideTypingEnabled: Boolean = true,
+    glideCharByChar: Boolean = false,
+    onToggleGlideMode: () -> Unit = {},
+    onToggleLayout: () -> Unit = {},
+    onSwipeWord: (List<KeyCenterPoint>, List<SwipeTrailPoint>, Boolean) -> Unit = { _, _, _ -> },
+    voiceUiState: VoiceUiState = VoiceUiState(),
+    onStartVoiceTyping: () -> Unit = {},
+    onStopVoiceTyping: () -> Unit = {},
+    onCancelVoiceTyping: () -> Unit = {},
+    onToggleVoiceLanguage: () -> Unit = {},
+    onLaunchSystemVoicePopup: () -> Unit = {},
+    ergonomicMode: String = KbSettings.ERGONOMIC_NORMAL,
+    floatingOffsetXFraction: Float = 0.5f,
+    floatingOffsetYDp: Float = 96f,
+    remoteHostIp: String = "",
+    remoteHostPort: Int = KbSettings.DEFAULT_REMOTE_PORT,
+    isMusicActive: Boolean = false,
+    onChangeErgonomicMode: (String) -> Unit = {},
+    onUpdateFloatingPosition: (Float, Float) -> Unit = { _, _ -> },
+    onFloatingBoundsChanged: (android.graphics.Rect?) -> Unit = {},
+    onCommitMediaClip: (ClipboardEntry) -> Unit = {},
+    onNavigate: (NavUnit, NavDirection, Boolean) -> Unit = { _, _, _ -> },
+    onSelectAll: () -> Unit = {},
+    onCopy: () -> Unit = {},
+    onCut: () -> Unit = {},
+    onMediaAction: (MediaControlAction) -> Unit = {},
+    onSelectRemoteHost: (String, Int) -> Unit = { _, _ -> },
 ) {
     var shiftState by remember(inputSessionKey, autoCapOnOpen) {
         mutableStateOf(if (autoCapOnOpen) ShiftState.ONCE else ShiftState.OFF)
@@ -322,27 +515,196 @@ fun KeyboardRoot(
     val kaomojiItems = remember { assets.loadKaomoji() }
     val emojiSections = remember { assets.loadEmojiSections() }
 
+    val handleEmojiToolSelect: (Int) -> Unit = { toolIdx ->
+        emojiToolsPopup = null
+        onKeyFeedback()
+        when (toolIdx) {
+            0 -> panelMode = PanelMode.CLIPBOARD
+            1 -> panelMode = PanelMode.TODO
+            2 -> panelMode = PanelMode.NAV
+            3 -> panelMode = PanelMode.MEDIA
+            4 -> panelMode = PanelMode.REMOTE
+            5 -> onChangeErgonomicMode(KbSettings.ERGONOMIC_NORMAL)
+            6 -> onChangeErgonomicMode(
+                if (ergonomicMode == KbSettings.ERGONOMIC_SPLIT) {
+                    KbSettings.ERGONOMIC_NORMAL
+                } else {
+                    KbSettings.ERGONOMIC_SPLIT
+                },
+            )
+            7 -> onChangeErgonomicMode(
+                if (ergonomicMode == KbSettings.ERGONOMIC_ONE_HAND_RIGHT) {
+                    KbSettings.ERGONOMIC_ONE_HAND_LEFT
+                } else {
+                    KbSettings.ERGONOMIC_ONE_HAND_RIGHT
+                },
+            )
+            8 -> onChangeErgonomicMode(
+                if (ergonomicMode == KbSettings.ERGONOMIC_FLOATING) {
+                    KbSettings.ERGONOMIC_NORMAL
+                } else {
+                    KbSettings.ERGONOMIC_FLOATING
+                },
+            )
+            9 -> onOpenSettings()
+        }
+    }
+
+    val isFloatingMode = ergonomicMode == KbSettings.ERGONOMIC_FLOATING
+    val isOneHandLeft = ergonomicMode == KbSettings.ERGONOMIC_ONE_HAND_LEFT
+    val isOneHandRight = ergonomicMode == KbSettings.ERGONOMIC_ONE_HAND_RIGHT
+    var dragFloatXFrac by remember(floatingOffsetXFraction, isFloatingMode) {
+        mutableStateOf(floatingOffsetXFraction)
+    }
+    var dragFloatYDp by remember(floatingOffsetYDp, isFloatingMode) {
+        mutableStateOf(floatingOffsetYDp)
+    }
+    var keyboardSurfaceWidthPx by remember { mutableStateOf(1080f) }
+
+    LaunchedEffect(isFloatingMode) {
+        if (!isFloatingMode) {
+            onFloatingBoundsChanged(null)
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .onGloballyPositioned { rootWidthPx = it.size.width.toFloat() },
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        val floatingCardWidthDp = with(density) {
+            (rootWidthPx * 0.88f).coerceIn(280.dp.toPx(), 350.dp.toPx()).toDp()
+        }
+        val floatingStartOffsetPx = ((rootWidthPx - with(density) { floatingCardWidthDp.toPx() })
+            .coerceAtLeast(0f) * dragFloatXFrac)
+            .roundToInt()
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (isFloatingMode) {
+                        Modifier.padding(bottom = dragFloatYDp.dp)
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
             Spacer(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(ThKbInputMethodService.TOP_POPUP_HEADROOM_DP.dp),
+                    .height(
+                        if (isFloatingMode) 140.dp else ThKbInputMethodService.TOP_POPUP_HEADROOM_DP.dp,
+                    ),
             )
             Surface(
                 color = BgColor,
-                modifier = Modifier.fillMaxWidth(),
+                shape = if (isFloatingMode) RoundedCornerShape(18.dp) else RoundedCornerShape(0.dp),
+                shadowElevation = if (isFloatingMode) 12.dp else 0.dp,
+                modifier = Modifier
+                    .then(
+                        if (isFloatingMode) {
+                            Modifier
+                                .width(floatingCardWidthDp)
+                                .offset { IntOffset(floatingStartOffsetPx, 0) }
+                                .border(1.dp, PillKeyBgColor, RoundedCornerShape(18.dp))
+                                .onGloballyPositioned { coords ->
+                                    keyboardSurfaceWidthPx = coords.size.width.toFloat()
+                                    val wRect = coords.boundsInWindow()
+                                    onFloatingBoundsChanged(
+                                        android.graphics.Rect(
+                                            wRect.left.roundToInt(),
+                                            wRect.top.roundToInt(),
+                                            wRect.right.roundToInt(),
+                                            wRect.bottom.roundToInt(),
+                                        ),
+                                    )
+                                }
+                        } else {
+                            Modifier
+                                .fillMaxWidth()
+                                .onGloballyPositioned { keyboardSurfaceWidthPx = it.size.width.toFloat() }
+                        },
+                    ),
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(bottom = 10.dp),
-                ) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    if (isOneHandRight) {
+                        OneHandControlRail(
+                            onExpand = {
+                                onKeyFeedback()
+                                onChangeErgonomicMode(KbSettings.ERGONOMIC_NORMAL)
+                            },
+                            onFlipSide = {
+                                onKeyFeedback()
+                                onChangeErgonomicMode(KbSettings.ERGONOMIC_ONE_HAND_LEFT)
+                            },
+                            onToggleFloat = {
+                                onKeyFeedback()
+                                onChangeErgonomicMode(KbSettings.ERGONOMIC_FLOATING)
+                            },
+                        )
+                    }
+
+                    val mainContentWeight = if (isOneHandLeft || isOneHandRight) 1f else 1f
+                    Column(
+                        modifier = Modifier
+                            .weight(mainContentWeight)
+                            .then(if (isFloatingMode) Modifier else Modifier.navigationBarsPadding())
+                            .padding(bottom = 10.dp),
+                    ) {
+                        if (isFloatingMode) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(24.dp)
+                                    .background(ActionKeyBgColor)
+                                    .pointerInput(rootWidthPx, floatingCardWidthDp) {
+                                        val maxTravelX = (rootWidthPx - with(density) { floatingCardWidthDp.toPx() })
+                                            .coerceAtLeast(1f)
+                                        detectDragGestures(
+                                            onDragEnd = {
+                                                onUpdateFloatingPosition(dragFloatXFrac, dragFloatYDp)
+                                            },
+                                            onDragCancel = {
+                                                onUpdateFloatingPosition(dragFloatXFrac, dragFloatYDp)
+                                            },
+                                        ) { change, dragAmount ->
+                                            change.consume()
+                                            dragFloatXFrac = (dragFloatXFrac + dragAmount.x / maxTravelX)
+                                                .coerceIn(0f, 1f)
+                                            val dyDp = with(density) { dragAmount.y.toDp().value }
+                                            dragFloatYDp = (dragFloatYDp - dyDp).coerceIn(16f, 400f)
+                                        }
+                                    }
+                                    .padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    text = "Floating",
+                                    color = HintTextColor,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Icon(
+                                    imageVector = Icons.Outlined.DragIndicator,
+                                    contentDescription = "Drag floating keyboard",
+                                    tint = HintTextColor,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Icon(
+                                    imageVector = Icons.Outlined.OpenInFull,
+                                    contentDescription = "Dock keyboard",
+                                    tint = ReturnBgColor,
+                                    modifier = Modifier
+                                        .size(15.dp)
+                                        .clickable {
+                                            onKeyFeedback()
+                                            onChangeErgonomicMode(KbSettings.ERGONOMIC_NORMAL)
+                                        },
+                                )
+                            }
+                        }
                     val isEmojiPanel = panelMode == PanelMode.EMOJI || panelMode == PanelMode.KAOMOJI
                     AnimatedContent(
                         targetState = isEmojiPanel,
@@ -487,6 +849,10 @@ fun KeyboardRoot(
                                     onKeyFeedback()
                                     onCommitText(text)
                                 },
+                                onCommitMediaClip = { entry ->
+                                    onKeyFeedback()
+                                    onCommitMediaClip(entry)
+                                },
                                 onSystemPaste = {
                                     onKeyFeedback()
                                     onPaste()
@@ -494,6 +860,34 @@ fun KeyboardRoot(
                                 onPinClip = onPinClip,
                                 onDeleteClip = onDeleteClip,
                                 onClearUnpinned = onClearUnpinnedClips,
+                            )
+                        }
+                        PanelMode.NAV -> {
+                            NavigationPanel(
+                                panelHeightDp = 250f,
+                                onNavigate = onNavigate,
+                                onSelectAll = onSelectAll,
+                                onCopy = onCopy,
+                                onCut = onCut,
+                                onPaste = onPaste,
+                                onKeyFeedback = onKeyFeedback,
+                            )
+                        }
+                        PanelMode.MEDIA -> {
+                            MediaControlPanel(
+                                panelHeightDp = 250f,
+                                isMusicActive = isMusicActive,
+                                onMediaAction = onMediaAction,
+                                onKeyFeedback = onKeyFeedback,
+                            )
+                        }
+                        PanelMode.REMOTE -> {
+                            RemoteControlPanel(
+                                panelHeightDp = 250f,
+                                savedHostIp = remoteHostIp,
+                                savedHostPort = remoteHostPort,
+                                onSelectHost = onSelectRemoteHost,
+                                onKeyFeedback = onKeyFeedback,
                             )
                         }
                         PanelMode.TODO -> {
@@ -547,7 +941,8 @@ fun KeyboardRoot(
                                 layoutId = activeLayoutId,
                                 languageLayoutId = layoutId,
                                 isAlphaLayer = layer == KeyboardLayer.ALPHA,
-                                rootWidthPx = rootWidthPx,
+                                isSplitMode = ergonomicMode == KbSettings.ERGONOMIC_SPLIT,
+                                rootWidthPx = keyboardSurfaceWidthPx,
                                 shiftState = shiftState,
                                 isForwardDeleteMode = isForwardDeleteMode,
                                 longPressDelayMs = longPressDelayMs,
@@ -569,13 +964,7 @@ fun KeyboardRoot(
                                     }
                                 },
                                 onSelectEmojiTool = { toolIdx ->
-                                    emojiToolsPopup = null
-                                    onKeyFeedback()
-                                    when (toolIdx) {
-                                        0 -> panelMode = PanelMode.CLIPBOARD
-                                        1 -> panelMode = PanelMode.TODO
-                                        2 -> onOpenSettings()
-                                    }
+                                    handleEmojiToolSelect(toolIdx)
                                 },
                                 onShowKeyPreview = { preview ->
                                     keyPreview = if (showKeyPreview) preview else null
@@ -748,10 +1137,28 @@ fun KeyboardRoot(
                 }
             }
         }
-    }
+                    }
+                    }
+
+                    if (isOneHandLeft) {
+                        OneHandControlRail(
+                            onExpand = {
+                                onKeyFeedback()
+                                onChangeErgonomicMode(KbSettings.ERGONOMIC_NORMAL)
+                            },
+                            onFlipSide = {
+                                onKeyFeedback()
+                                onChangeErgonomicMode(KbSettings.ERGONOMIC_ONE_HAND_RIGHT)
+                            },
+                            onToggleFloat = {
+                                onKeyFeedback()
+                                onChangeErgonomicMode(KbSettings.ERGONOMIC_FLOATING)
+                            },
+                        )
+                    }
+                }
             }
         }
-    }
 
         var activePreview by remember { mutableStateOf<KeyPreviewState?>(null) }
         if (keyPreview != null) {
@@ -776,8 +1183,10 @@ fun KeyboardRoot(
             val preview = activePreview ?: return@AnimatedVisibility
             val bubbleW = with(density) { 48.dp.toPx() }
             val bubbleH = with(density) { 54.dp.toPx() }
-            val gridTopInRootPx = with(density) { (ThKbInputMethodService.TOP_POPUP_HEADROOM_DP + 44).dp.toPx() }
-            val targetOffsetX = (preview.centerX - bubbleW / 2f)
+            val topHeadroom = if (isFloatingMode) 140 + 24 else ThKbInputMethodService.TOP_POPUP_HEADROOM_DP
+            val surfaceOriginX = if (isFloatingMode) floatingStartOffsetPx.toFloat() else if (isOneHandRight) with(density) { 44.dp.toPx() } else 0f
+            val gridTopInRootPx = with(density) { (topHeadroom + 44).dp.toPx() }
+            val targetOffsetX = (surfaceOriginX + preview.centerX - bubbleW / 2f)
                 .coerceIn(with(density) { 4.dp.toPx() }, (rootWidthPx - bubbleW - with(density) { 4.dp.toPx() }).coerceAtLeast(4f))
             val targetOffsetY = (gridTopInRootPx + preview.topY - bubbleH - with(density) { 6.dp.toPx() })
                 .coerceAtLeast(with(density) { 4.dp.toPx() })
@@ -812,7 +1221,7 @@ fun KeyboardRoot(
                     ) { label ->
                         Text(
                             text = label,
-                            color = Color.White,
+                            color = KeyTextColor,
                             fontSize = 26.sp,
                             fontWeight = FontWeight.Medium,
                         )
@@ -846,14 +1255,18 @@ fun KeyboardRoot(
             val cellDp = if (cols > 5) 38.dp else 44.dp
             val popupRows = popup.variants.chunked(cols)
             val popupHeightPx = with(density) { (popupRows.size * (cellDp.value + 4) + 16).dp.toPx() }
-            val gridTopInRootPx = with(density) { (ThKbInputMethodService.TOP_POPUP_HEADROOM_DP + 44).dp.toPx() }
+            val topHeadroom = if (isFloatingMode) 140 + 24 else ThKbInputMethodService.TOP_POPUP_HEADROOM_DP
+            val surfaceOriginX = if (isFloatingMode) floatingStartOffsetPx.toFloat() else if (isOneHandRight) with(density) { 44.dp.toPx() } else 0f
+            val gridTopInRootPx = with(density) { (topHeadroom + 44).dp.toPx() }
             val popupOffsetY = (gridTopInRootPx + popup.anchorY - popupHeightPx - with(density) { 6.dp.toPx() })
                 .coerceAtLeast(with(density) { 4.dp.toPx() })
                 .roundToInt()
-            val popupOffsetX = popup.anchorX.roundToInt()
+            val popupOffsetX = (surfaceOriginX + popup.anchorX)
+                .coerceIn(0f, (rootWidthPx - 120f).coerceAtLeast(0f))
+                .roundToInt()
 
             Surface(
-                color = Color(0xFF2C2E33),
+                color = ActionKeyBgColor,
                 shape = RoundedCornerShape(22.dp),
                 shadowElevation = 8.dp,
                 modifier = Modifier
@@ -906,7 +1319,7 @@ fun KeyboardRoot(
                                     val flatIndex = actualRow * cols + colIdx
                                     val isSelected = flatIndex == selectedIdx
                                     val textColor by animateColorAsState(
-                                        targetValue = if (isSelected) ReturnFgColor else Color.White,
+                                        targetValue = if (isSelected) ReturnFgColor else KeyTextColor,
                                         animationSpec = tween(durationMillis = 100),
                                         label = "variantTextColor",
                                     )
@@ -959,82 +1372,139 @@ fun KeyboardRoot(
             ) + fadeOut(animationSpec = tween(70)),
         ) {
             val toolsPopup = activeEmojiToolsPopup ?: return@AnimatedVisibility
-            val cellDp = 44.dp
-            val popupHeightPx = with(density) { (cellDp.value + 16).dp.toPx() }
-            val gridTopInRootPx = with(density) { (ThKbInputMethodService.TOP_POPUP_HEADROOM_DP + 44).dp.toPx() }
+            val cellDp = 42.dp
+            val popupCols = 5
+            val popupRows = 2
+            val cellStepX = cellDp + 4.dp
+            val cellStepY = cellDp + 4.dp
+            val popupHeightPx = with(density) { (cellDp.value * popupRows + 20).dp.toPx() }
+            val topHeadroom = if (isFloatingMode) 140 + 24 else ThKbInputMethodService.TOP_POPUP_HEADROOM_DP
+            val surfaceOriginX = if (isFloatingMode) floatingStartOffsetPx.toFloat() else if (isOneHandRight) with(density) { 44.dp.toPx() } else 0f
+            val gridTopInRootPx = with(density) { (topHeadroom + 44).dp.toPx() }
             val popupOffsetY = (gridTopInRootPx + toolsPopup.anchorY - popupHeightPx - with(density) { 6.dp.toPx() })
                 .coerceAtLeast(with(density) { 4.dp.toPx() })
                 .roundToInt()
-            val popupOffsetX = toolsPopup.anchorX.roundToInt()
+            val popupOffsetX = (surfaceOriginX + toolsPopup.anchorX)
+                .coerceIn(0f, (rootWidthPx - 240f).coerceAtLeast(0f))
+                .roundToInt()
             val toolIcons = listOf(
                 Icons.Outlined.ContentPaste to "Clipboard",
                 Icons.Outlined.Checklist to "To-Do",
+                Icons.Outlined.OpenWith to "Navigate",
+                Icons.Outlined.MusicNote to "Media",
+                Icons.Outlined.Mouse to "Remote",
+                Icons.Outlined.Keyboard to "Normal",
+                Icons.Outlined.ViewColumn to "Split",
+                Icons.Outlined.Smartphone to "1-Hand",
+                Icons.Outlined.PictureInPictureAlt to "Float",
                 Icons.Outlined.Settings to "Settings",
             )
-            val selectedIdx = toolsPopup.selectedIndex
+            val selectedIdx = toolsPopup.selectedIndex.coerceIn(0, toolIcons.lastIndex)
+            val targetCol = (selectedIdx % popupCols).toFloat()
+            val targetRow = (selectedIdx / popupCols).toFloat()
             val bubbleCol by animateFloatAsState(
-                targetValue = selectedIdx.coerceAtLeast(0).toFloat(),
+                targetValue = targetCol,
                 animationSpec = spring(dampingRatio = 0.72f, stiffness = 650f),
                 label = "emojiToolBubbleCol",
             )
-            val cellStepX = cellDp + 4.dp
+            val bubbleRow by animateFloatAsState(
+                targetValue = targetRow,
+                animationSpec = spring(dampingRatio = 0.72f, stiffness = 650f),
+                label = "emojiToolBubbleRow",
+            )
 
             Surface(
-                color = Color(0xFF2C2E33),
-                shape = RoundedCornerShape(24.dp),
+                color = ActionKeyBgColor,
+                shape = RoundedCornerShape(20.dp),
                 shadowElevation = 8.dp,
                 modifier = Modifier
                     .zIndex(21f)
-                    .offset { IntOffset(popupOffsetX, popupOffsetY) },
+                    .offset { IntOffset(popupOffsetX, popupOffsetY) }
+                    .border(1.dp, PillKeyBgColor, RoundedCornerShape(20.dp)),
             ) {
                 Box(modifier = Modifier.padding(8.dp)) {
-                    if (selectedIdx in 0..2) {
-                        Box(
-                            modifier = Modifier
-                                .offset {
-                                    val xPx = with(density) { (bubbleCol * cellStepX.toPx()).roundToInt() }
-                                    IntOffset(xPx, 0)
-                                }
-                                .size(cellDp)
-                                .background(ReturnBgColor, CircleShape),
-                        )
-                    }
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        toolIcons.forEachIndexed { idx, (iconVec, desc) ->
-                            val isSelected = idx == selectedIdx
-                            val iconTint by animateColorAsState(
-                                targetValue = if (isSelected) ReturnFgColor else Color.White,
-                                animationSpec = tween(100),
-                                label = "emojiToolIconTint",
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(cellDp)
-                                    .clip(CircleShape)
-                                    .clickable {
-                                        emojiToolsPopup = null
-                                        onKeyFeedback()
-                                        when (idx) {
-                                            0 -> panelMode = PanelMode.CLIPBOARD
-                                            1 -> panelMode = PanelMode.TODO
-                                            2 -> onOpenSettings()
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center,
+                    Box(
+                        modifier = Modifier
+                            .offset {
+                                val xPx = with(density) { (bubbleCol * cellStepX.toPx()).roundToInt() }
+                                val yPx = with(density) { (bubbleRow * cellStepY.toPx()).roundToInt() }
+                                IntOffset(xPx, yPx)
+                            }
+                            .size(cellDp)
+                            .background(ReturnBgColor, CircleShape),
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        for (r in 0 until popupRows) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Icon(
-                                    imageVector = iconVec,
-                                    contentDescription = desc,
-                                    tint = iconTint,
-                                    modifier = Modifier.size(21.dp),
-                                )
+                                for (c in 0 until popupCols) {
+                                    val idx = r * popupCols + c
+                                    val (iconVec, desc) = toolIcons[idx]
+                                    val isSelected = idx == selectedIdx
+                                    val iconTint by animateColorAsState(
+                                        targetValue = if (isSelected) ReturnFgColor else KeyTextColor,
+                                        animationSpec = tween(100),
+                                        label = "emojiToolIconTint",
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(cellDp)
+                                            .clip(CircleShape)
+                                            .clickable { handleEmojiToolSelect(idx) },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            imageVector = iconVec,
+                                            contentDescription = desc,
+                                            tint = iconTint,
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OneHandControlRail(
+    onExpand: () -> Unit,
+    onFlipSide: () -> Unit,
+    onToggleFloat: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .width(44.dp)
+            .padding(vertical = 12.dp, horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Spacer(modifier = Modifier.height(16.dp))
+        listOf(
+            Triple(Icons.Outlined.OpenInFull, "Full Keyboard", onExpand),
+            Triple(Icons.Outlined.SwapHoriz, "Switch Hand", onFlipSide),
+            Triple(Icons.Outlined.PictureInPictureAlt, "Floating Keyboard", onToggleFloat),
+        ).forEach { (icon, desc, action) ->
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(ActionKeyBgColor)
+                    .clickable(onClick = action),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = desc,
+                    tint = ToolbarTextColor,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
     }
@@ -1100,7 +1570,7 @@ private fun EmojiSearchKeyboardHeader(
                     } else {
                         "🔍 $query|"
                     },
-                    color = if (query.isEmpty()) HintTextColor else Color.White,
+                    color = if (query.isEmpty()) HintTextColor else KeyTextColor,
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1177,7 +1647,13 @@ private fun ToolbarRow(
     val density = LocalDensity.current
     val latestOnResize by rememberUpdatedState(onResizeDeltaDp)
     val isSuggestionMode = panelMode == PanelMode.KEYBOARD && suggestions.isNotEmpty()
-    val isSubPanel = panelMode == PanelMode.CLIPBOARD || panelMode == PanelMode.TODO
+    val isSubPanel = panelMode in setOf(
+        PanelMode.CLIPBOARD,
+        PanelMode.TODO,
+        PanelMode.NAV,
+        PanelMode.MEDIA,
+        PanelMode.REMOTE,
+    )
 
     val resizeArrowRotation by animateFloatAsState(
         targetValue = if (isExpanded) 180f else 0f,
@@ -1303,7 +1779,7 @@ private fun ToolbarRow(
                             ) {
                                 Text(
                                     text = if (candidate.isLiteral) "“${candidate.word}”" else candidate.word,
-                                    color = if (isCenter) ReturnBgColor else Color(0xFFE3E3E3),
+                                    color = if (isCenter) ReturnBgColor else ToolbarTextColor,
                                     fontSize = if (isCenter) 15.sp else 14.sp,
                                     fontWeight = if (isCenter) FontWeight.SemiBold else FontWeight.Normal,
                                     maxLines = 1,
@@ -1412,6 +1888,7 @@ private fun TouchKeyGrid(
     layoutId: String,
     languageLayoutId: String,
     isAlphaLayer: Boolean,
+    isSplitMode: Boolean = false,
     rootWidthPx: Float,
     shiftState: ShiftState,
     isForwardDeleteMode: Boolean,
@@ -1564,7 +2041,7 @@ private fun TouchKeyGrid(
                                     lastGlideY = localPos.y,
                                 )
 
-                                when (hitKey) {
+                                when (if (hitKey == "SPACE_R") "SPACE" else hitKey) {
                                     "BACKSPACE" -> {
                                         // Very-long-press rapid delete mode
                                         pointer.repeatJob = scope.launch {
@@ -1582,21 +2059,21 @@ private fun TouchKeyGrid(
                                             delay(1000L)
                                             if (!pointer.isGliding) {
                                                 pointer.deleteGestureTriggered = true
-                                                glidedKeyTimestamps["SPACE"] = android.os.SystemClock.uptimeMillis()
+                                                glidedKeyTimestamps[hitKey] = android.os.SystemClock.uptimeMillis()
                                                 latestOnKeyFeedback()
                                                 latestOnToggleLayout()
                                             }
                                         }
                                     }
                                     "EMOJI_KEY" -> {
-                                        // Hold Emoji button -> reveal hidden Tools popup (Clipboard, To-Do, Settings)
+                                        // Hold Emoji button -> reveal hidden 2x5 Tools & Ergonomics popup
                                         val rect = keyBounds["EMOJI_KEY"]
                                         pointer.longPressJob = scope.launch {
                                             delay(latestLongPressDelayMs)
                                             if (!pointer.isGliding) {
                                                 pointer.deleteGestureTriggered = true
                                                 latestOnKeyFeedback()
-                                                val popupWidthPx = with(density) { (3 * 48f + 12f).dp.toPx() }
+                                                val popupWidthPx = with(density) { (5 * 46f + 16f).dp.toPx() }
                                                 val centerX = rect?.center?.x ?: localPos.x
                                                 val popupLeftX = (centerX - popupWidthPx / 2f).coerceIn(
                                                     with(density) { 6.dp.toPx() },
@@ -1690,19 +2167,19 @@ private fun TouchKeyGrid(
                                 val totalDx = localPos.x - pointer.startPosition.x
                                 val totalDy = localPos.y - pointer.startPosition.y
 
-                                if (pointer.keyId == "SPACE") {
+                                if (pointer.keyId == "SPACE" || pointer.keyId == "SPACE_R") {
                                     if (!pointer.isGliding && (abs(totalDx) > glideThresholdPx || abs(totalDy) > glideThresholdPx)) {
                                         pointer.isGliding = true
                                         pointer.longPressJob?.cancel()
                                         pointer.lastGlideX = localPos.x
                                         pointer.lastGlideY = localPos.y
-                                        activeGlidedKey = "SPACE"
-                                        glidedKeyTimestamps["SPACE"] = android.os.SystemClock.uptimeMillis()
+                                        activeGlidedKey = pointer.keyId
+                                        glidedKeyTimestamps[pointer.keyId] = android.os.SystemClock.uptimeMillis()
                                     }
                                     if (pointer.isGliding) {
                                         val now = android.os.SystemClock.uptimeMillis()
-                                        activeGlidedKey = "SPACE"
-                                        glidedKeyTimestamps["SPACE"] = now
+                                        activeGlidedKey = pointer.keyId
+                                        glidedKeyTimestamps[pointer.keyId] = now
                                         spaceGlideOffsetPx = (localPos.x - pointer.startPosition.x).coerceIn(-64f, 64f)
                                         spaceGlideOffsetY = (localPos.y - pointer.startPosition.y).coerceIn(-24f, 24f)
                                         val stepDx = localPos.x - pointer.lastGlideX
@@ -1723,13 +2200,16 @@ private fun TouchKeyGrid(
                                 } else if (pointer.keyId == "EMOJI_KEY") {
                                     val toolsPopup = latestEmojiToolsPopup
                                     if (toolsPopup != null && (abs(totalDx) > 8f || totalDy < -10f)) {
-                                        val cellStepPx = with(density) { 48.dp.toPx() }
+                                        val cellStepPx = with(density) { 46.dp.toPx() }
                                         val padPx = with(density) { 8.dp.toPx() }
+                                        val popupTopInGrid = toolsPopup.anchorY - cellStepPx * 2f - with(density) { 18.dp.toPx() }
+                                        val row = if (localPos.y < popupTopInGrid + cellStepPx) 0 else 1
                                         val col = ((localPos.x - (toolsPopup.anchorX + padPx)) / cellStepPx)
                                             .toInt()
-                                            .coerceIn(0, 2)
-                                        if (col != toolsPopup.selectedIndex) {
-                                            latestOnShowEmojiToolsPopup(toolsPopup.copy(selectedIndex = col))
+                                            .coerceIn(0, 4)
+                                        val idx = (row * 5 + col).coerceIn(0, 9)
+                                        if (idx != toolsPopup.selectedIndex) {
+                                            latestOnShowEmojiToolsPopup(toolsPopup.copy(selectedIndex = idx))
                                         }
                                     }
                                 } else if (pointer.keyId == "SHIFT") {
@@ -1968,14 +2448,15 @@ private fun TouchKeyGrid(
 
                                 val toolsPopup = latestEmojiToolsPopup
                                 val popup = latestPopup
+                                val normalizedKey = if (pointer.keyId == "SPACE_R") "SPACE" else pointer.keyId
                                 if (pointer.keyId == "EMOJI_KEY" && toolsPopup != null) {
-                                    if (toolsPopup.selectedIndex in 0..2) {
+                                    if (toolsPopup.selectedIndex in 0..9) {
                                         latestOnSelectEmojiTool(toolsPopup.selectedIndex)
                                     }
                                 } else if (popup != null) {
                                     val chosen = popup.variants[popup.selectedIndex]
                                     latestOnShowAccentPopup(null)
-                                    latestOnKeyAction(pointer.keyId, chosen)
+                                    latestOnKeyAction(normalizedKey, chosen)
                                 } else if (pointer.isSwipeTyping) {
                                     val pointsSnapshot = wordSwipePoints.map { pt -> SwipeTrailPoint(pt.x, pt.y) }
                                     val centersSnapshot = keyBounds.entries.mapNotNull { (k, rect) ->
@@ -1995,7 +2476,7 @@ private fun TouchKeyGrid(
                                         latestOnSwipeWord(centersSnapshot, pointsSnapshot, false)
                                     }
                                 } else if (!pointer.isGliding && !pointer.deleteGestureTriggered) {
-                                    latestOnKeyAction(pointer.keyId, null)
+                                    latestOnKeyAction(normalizedKey, null)
                                 }
                                 change.consume()
                             }
@@ -2023,97 +2504,118 @@ private fun TouchKeyGrid(
                 .padding(horizontal = 4.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            val renderKey: @Composable RowScope.(String, Int, Boolean) -> Unit = { keyId, rowIndex, splitActive ->
+                val canonicalId = if (keyId == "SPACE_R") "SPACE" else keyId
+                val weight = if (splitActive && canonicalId == "SPACE") 2.2f else keyWeightFor(canonicalId, layoutId)
+                val isPill = isPillKey(canonicalId, rowIndex)
+                val isLessRoundedControl = isLessRoundedControlKey(canonicalId, rowIndex)
+                val isAction = isActionKey(canonicalId)
+                val isPressed = pressedKeys[keyId] == true
+                val isReturn = canonicalId == "RETURN"
+                val isShiftActive = canonicalId == "SHIFT" && shiftState != ShiftState.OFF
+                val isForwardDeleteKey = canonicalId == "BACKSPACE" && isForwardDeleteMode
+                val isSpaceGliding = canonicalId == "SPACE" &&
+                    activePointers.values.any { (it.keyId == "SPACE" || it.keyId == "SPACE_R") && it.isGliding }
+
+                val bg = when {
+                    isReturn -> ReturnBgColor
+                    isShiftActive || isForwardDeleteKey -> KeyPressedColor
+                    isPressed -> KeyPressedColor
+                    isPill || isLessRoundedControl -> PillKeyBgColor
+                    isAction -> ActionKeyBgColor
+                    else -> KeyBgColor
+                }
+                val fg = when {
+                    isReturn -> ReturnFgColor
+                    isForwardDeleteKey -> ReturnBgColor
+                    else -> KeyTextColor
+                }
+                val shape: Shape = when {
+                    isPill -> RoundedCornerShape(50)
+                    isLessRoundedControl -> RoundedCornerShape(10.dp)
+                    else -> RoundedCornerShape(8.dp)
+                }
+                val hint = when {
+                    canonicalId == "SHIFT" && glideTypingEnabled && isAlphaLayer -> if (glideCharByChar) "Char" else "Word"
+                    rowIndex == 3 && canonicalId == "SYMBOLS" -> "123"
+                    rowIndex == 3 && canonicalId == "NUMERIC" -> "?#"
+                    rowIndex == 3 && canonicalId == "ALPHA" && layoutId == "numeric" -> "?#"
+                    rowIndex == 3 && canonicalId == "ALPHA" && !isAlphaLayer -> "123"
+                    isAlphaLayer -> KeyboardStateLogic.hintForKey(languageLayoutId, canonicalId)
+                    else -> null
+                }
+                val lastGlidedAt = glidedKeyTimestamps[keyId]
+                val isKeyGlided = activeGlidedKey == keyId ||
+                    (lastGlidedAt != null && (trailClockMs - lastGlidedAt) in 0..220)
+
+                val keyLabel = if (canonicalId == "SPACE") {
+                    if (splitActive) {
+                        if (languageLayoutId.contains("fr") || languageLayoutId.contains("ci")) "FR" else "EN"
+                    } else if (languageLayoutId.contains("fr") || languageLayoutId.contains("ci")) {
+                        "Français • AZERTY"
+                    } else {
+                        "English • QWERTY"
+                    }
+                } else {
+                    KeyboardStateLogic.resolveKeyLabel(canonicalId, shiftState, returnAction)
+                }
+
+                KeyCap(
+                    keyId = canonicalId,
+                    label = keyLabel,
+                    shiftState = shiftState,
+                    isForwardDeleteKey = isForwardDeleteKey,
+                    isPressed = isPressed,
+                    isGlidedOver = isKeyGlided,
+                    isSpaceGliding = isSpaceGliding,
+                    spaceGlideOffsetPx = if (canonicalId == "SPACE") spaceGlideOffsetPx else 0f,
+                    spaceGlideOffsetY = if (canonicalId == "SPACE") spaceGlideOffsetY else 0f,
+                    returnAction = returnAction,
+                    icon = keyIconFor(canonicalId, returnAction),
+                    hint = hint,
+                    weight = weight,
+                    shape = shape,
+                    backgroundColor = bg,
+                    foregroundColor = fg,
+                    onBoundsChanged = { coords ->
+                        val parent = gridCoords ?: return@KeyCap
+                        if (parent.isAttached && coords.isAttached) {
+                            keyBounds[keyId] = parent.localBoundingBoxOf(coords, clipBounds = false)
+                        }
+                    },
+                )
+            }
+
+            val splitActiveForLayer = isSplitMode && (isAlphaLayer || layoutId == "symbols" || layoutId == "symbols_more")
             rows.forEachIndexed { rowIndex, row ->
-                val centerNineKeyRow = isAlphaLayer && rowIndex == 1 && row.size == 9
+                val centerNineKeyRow = !splitActiveForLayer && isAlphaLayer && rowIndex == 1 && row.size == 9
                 val rowHeight = if (layoutId == "numeric") 56.dp else 52.dp
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(rowHeight),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (splitActiveForLayer) 4.dp else 5.dp),
                 ) {
-                    if (centerNineKeyRow) {
-                        Spacer(modifier = Modifier.weight(0.5f))
-                    }
-                    row.forEach { keyId ->
-                        val weight = keyWeightFor(keyId, layoutId)
-                        val isPill = isPillKey(keyId, rowIndex)
-                        val isLessRoundedControl = isLessRoundedControlKey(keyId, rowIndex)
-                        val isAction = isActionKey(keyId)
-                        val isPressed = pressedKeys[keyId] == true
-                        val isReturn = keyId == "RETURN"
-                        val isShiftActive = keyId == "SHIFT" && shiftState != ShiftState.OFF
-                        val isForwardDeleteKey = keyId == "BACKSPACE" && isForwardDeleteMode
-                        val isSpaceGliding = keyId == "SPACE" && activePointers.values.any { it.keyId == "SPACE" && it.isGliding }
-
-                        val bg = when {
-                            isReturn -> ReturnBgColor
-                            isShiftActive || isForwardDeleteKey -> KeyPressedColor
-                            isPressed -> KeyPressedColor
-                            isPill || isLessRoundedControl -> PillKeyBgColor
-                            isAction -> ActionKeyBgColor
-                            else -> KeyBgColor
+                    if (splitActiveForLayer) {
+                        val (leftKeys, rightKeys) = KeyboardStateLogic.splitRowForErgonomics(row, rowIndex)
+                        leftKeys.forEach { keyId ->
+                            renderKey(keyId, rowIndex, true)
                         }
-                        val fg = when {
-                            isReturn -> ReturnFgColor
-                            isForwardDeleteKey -> ReturnBgColor
-                            else -> Color.White
+                        Spacer(modifier = Modifier.weight(1.35f))
+                        rightKeys.forEach { rawKey ->
+                            val boundKey = if (rawKey == "SPACE") "SPACE_R" else rawKey
+                            renderKey(boundKey, rowIndex, true)
                         }
-                        val shape: Shape = when {
-                            isPill -> RoundedCornerShape(50)
-                            isLessRoundedControl -> RoundedCornerShape(10.dp)
-                            else -> RoundedCornerShape(8.dp)
+                    } else {
+                        if (centerNineKeyRow) {
+                            Spacer(modifier = Modifier.weight(0.5f))
                         }
-                        val hint = when {
-                            keyId == "SHIFT" && glideTypingEnabled && isAlphaLayer -> if (glideCharByChar) "Char" else "Word"
-                            rowIndex == 3 && keyId == "SYMBOLS" -> "123"
-                            rowIndex == 3 && keyId == "NUMERIC" -> "?#"
-                            rowIndex == 3 && keyId == "ALPHA" && layoutId == "numeric" -> "?#"
-                            rowIndex == 3 && keyId == "ALPHA" && !isAlphaLayer -> "123"
-                            isAlphaLayer -> KeyboardStateLogic.hintForKey(languageLayoutId, keyId)
-                            else -> null
+                        row.forEach { keyId ->
+                            renderKey(keyId, rowIndex, false)
                         }
-                        val lastGlidedAt = glidedKeyTimestamps[keyId]
-                        val isKeyGlided = activeGlidedKey == keyId ||
-                            (lastGlidedAt != null && (trailClockMs - lastGlidedAt) in 0..220)
-
-                        val keyLabel = if (keyId == "SPACE") {
-                            if (languageLayoutId.contains("fr") || languageLayoutId.contains("ci")) {
-                                "Français • AZERTY"
-                            } else {
-                                "English • QWERTY"
-                            }
-                        } else {
-                            KeyboardStateLogic.resolveKeyLabel(keyId, shiftState, returnAction)
+                        if (centerNineKeyRow) {
+                            Spacer(modifier = Modifier.weight(0.5f))
                         }
-
-                        KeyCap(
-                            keyId = keyId,
-                            label = keyLabel,
-                            shiftState = shiftState,
-                            isForwardDeleteKey = isForwardDeleteKey,
-                            isPressed = isPressed,
-                            isGlidedOver = isKeyGlided,
-                            isSpaceGliding = isSpaceGliding,
-                            spaceGlideOffsetPx = if (keyId == "SPACE") spaceGlideOffsetPx else 0f,
-                            spaceGlideOffsetY = if (keyId == "SPACE") spaceGlideOffsetY else 0f,
-                            returnAction = returnAction,
-                            icon = keyIconFor(keyId, returnAction),
-                            hint = hint,
-                            weight = weight,
-                            shape = shape,
-                            backgroundColor = bg,
-                            foregroundColor = fg,
-                            onBoundsChanged = { coords ->
-                                val parent = gridCoords ?: return@KeyCap
-                                if (parent.isAttached && coords.isAttached) {
-                                    keyBounds[keyId] = parent.localBoundingBoxOf(coords, clipBounds = false)
-                                }
-                            },
-                        )
-                    }
-                    if (centerNineKeyRow) {
-                        Spacer(modifier = Modifier.weight(0.5f))
                     }
                 }
             }
@@ -2121,6 +2623,8 @@ private fun TouchKeyGrid(
 
         if (visualTrail.size >= 2) {
             val nowMs = trailClockMs.coerceAtLeast(visualTrail.last().timeMs)
+            val trailGlowColor = ReturnBgColor
+            val trailCoreColor = KeyTextColor
             Canvas(modifier = Modifier.matchParentSize()) {
                 val n = visualTrail.size
                 for (i in 1 until n) {
@@ -2135,14 +2639,14 @@ private fun TouchKeyGrid(
                     val o0 = Offset(p0.x, p0.y)
                     val o1 = Offset(p1.x, p1.y)
                     drawLine(
-                        color = ReturnBgColor.copy(alpha = 0.42f * intensity),
+                        color = trailGlowColor.copy(alpha = 0.42f * intensity),
                         start = o0,
                         end = o1,
                         strokeWidth = (3.dp.toPx() + 9.dp.toPx() * intensity),
                         cap = StrokeCap.Round,
                     )
                     drawLine(
-                        color = Color.White.copy(alpha = 0.85f * intensity),
+                        color = trailCoreColor.copy(alpha = 0.85f * intensity),
                         start = o0,
                         end = o1,
                         strokeWidth = (1.2.dp.toPx() + 2.8.dp.toPx() * intensity),
@@ -2151,7 +2655,7 @@ private fun TouchKeyGrid(
                 }
             }
             val currentGlided = activeGlidedKey
-            if (currentGlided != null && (glideCharByChar || currentGlided == "SPACE")) {
+            if (currentGlided != null && (glideCharByChar || currentGlided == "SPACE" || currentGlided == "SPACE_R")) {
                 Surface(
                     color = ActionKeyBgColor.copy(alpha = 0.92f),
                     shape = RoundedCornerShape(50),

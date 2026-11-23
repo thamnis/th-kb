@@ -24,6 +24,38 @@ enum class PanelMode {
     CLIPBOARD,
     TODO,
     VOICE,
+    NAV,
+    MEDIA,
+    REMOTE,
+}
+
+enum class NavUnit {
+    CHAR,
+    WORD,
+    PHRASE,
+    PARAGRAPH,
+    LINE,
+    DOCUMENT,
+}
+
+enum class NavDirection {
+    LEFT,
+    RIGHT,
+    UP,
+    DOWN,
+    START,
+    END,
+}
+
+enum class MediaControlAction {
+    PLAY_PAUSE,
+    PREVIOUS,
+    NEXT,
+    REWIND,
+    FAST_FORWARD,
+    VOL_DOWN,
+    VOL_UP,
+    MUTE,
 }
 
 enum class InputContext {
@@ -253,5 +285,204 @@ object KeyboardStateLogic {
             text == title -> upper
             else -> lower
         }
+    }
+
+    /** Splits a keyboard row cleanly into left and right halves for ergonomic Split Mode. */
+    fun splitRowForErgonomics(row: List<String>, rowIndex: Int): Pair<List<String>, List<String>> {
+        if (row.size <= 1) return row to emptyList()
+        val spaceIdx = row.indexOf("SPACE")
+        if (spaceIdx >= 0 && rowIndex >= 3) {
+            val left = row.subList(0, spaceIdx + 1)
+            val right = listOf("SPACE") + row.subList(spaceIdx + 1, row.size)
+            return left to right
+        }
+        val mid = (row.size + 1) / 2
+        return row.subList(0, mid) to row.subList(mid, row.size)
+    }
+
+    /** Extracts active Discord-style `:shortcode` query before cursor (e.g. "hey :fir" -> "fir"). */
+    fun extractActiveShortcodeQuery(textBeforeCursor: String): String? {
+        if (textBeforeCursor.isEmpty()) return null
+        val colonIdx = textBeforeCursor.lastIndexOf(':')
+        if (colonIdx < 0) return null
+        if (colonIdx > 0) {
+            val prev = textBeforeCursor[colonIdx - 1]
+            if (!prev.isWhitespace() && prev !in setOf('(', '[', '{', '"', '\'')) {
+                return null
+            }
+        }
+        val afterColon = textBeforeCursor.substring(colonIdx + 1)
+        if (afterColon.isEmpty() || afterColon.length > 24) return null
+        if (!afterColon.all { it.isLetterOrDigit() || it == '_' || it == '-' || it == '+' }) {
+            return null
+        }
+        return afterColon.lowercase()
+    }
+
+    private val DISCORD_SHORTCODES: List<Pair<String, String>> = listOf(
+        "joy" to "😂",
+        "laugh" to "😂",
+        "rofl" to "🤣",
+        "smile" to "😊",
+        "grin" to "😀",
+        "heart_eyes" to "😍",
+        "smiling_face_with_3_hearts" to "🥰",
+        "kiss" to "😘",
+        "sunglasses" to "😎",
+        "cool" to "😎",
+        "partying" to "🥳",
+        "party" to "🥳",
+        "star_struck" to "🤩",
+        "thinking" to "🤔",
+        "think" to "🤔",
+        "sweat_smile" to "😅",
+        "cry" to "😭",
+        "sob" to "😭",
+        "rage" to "😡",
+        "angry" to "😡",
+        "exploding_head" to "🤯",
+        "sleeping" to "😴",
+        "sleep" to "😴",
+        "heart" to "❤️",
+        "red_heart" to "❤️",
+        "orange_heart" to "🧡",
+        "yellow_heart" to "💛",
+        "green_heart" to "💚",
+        "blue_heart" to "💙",
+        "purple_heart" to "💜",
+        "broken_heart" to "💔",
+        "100" to "💯",
+        "hundred" to "💯",
+        "fire" to "🔥",
+        "lit" to "🔥",
+        "sparkles" to "✨",
+        "star" to "⭐",
+        "thumbsup" to "👍",
+        "+1" to "👍",
+        "thumbsdown" to "👎",
+        "-1" to "👎",
+        "pray" to "🙏",
+        "clap" to "👏",
+        "raised_hands" to "🙌",
+        "handshake" to "🤝",
+        "muscle" to "💪",
+        "wave" to "👋",
+        "v" to "✌️",
+        "peace" to "✌️",
+        "crossed_fingers" to "🤞",
+        "eyes" to "👀",
+        "white_check_mark" to "✅",
+        "check" to "✅",
+        "x" to "❌",
+        "warning" to "⚠️",
+        "tada" to "🎉",
+        "cake" to "🎂",
+        "pizza" to "🍕",
+        "hamburger" to "🍔",
+        "fries" to "🍟",
+        "poultry_leg" to "🍗",
+        "fish" to "🐟",
+        "banana" to "🍌",
+        "rice" to "🍚",
+        "beer" to "🍺",
+        "coffee" to "☕",
+        "car" to "🚗",
+        "airplane" to "✈️",
+        "house" to "🏠",
+        "home" to "🏠",
+        "laptop" to "💻",
+        "iphone" to "📱",
+        "phone" to "📱",
+        "moneybag" to "💰",
+        "money" to "💰",
+        "musical_note" to "🎵",
+        "music" to "🎵",
+        "soccer" to "⚽",
+        "trophy" to "🏆",
+        "rocket" to "🚀",
+        "zap" to "⚡",
+        "bulb" to "💡",
+        "lock" to "🔒",
+        "key" to "🔑",
+        "ci" to "🇨🇮",
+        "fr" to "🇫🇷",
+        "us" to "🇺🇸",
+        "gb" to "🇬🇧",
+        "sn" to "🇸🇳",
+        "cm" to "🇨🇲",
+        "ml" to "🇲🇱",
+        "bf" to "🇧🇫",
+    )
+
+    fun findEmojiShortcodeMatches(query: String, limit: Int = 5): List<Pair<String, String>> {
+        val needle = query.trim().lowercase()
+        if (needle.isEmpty()) return emptyList()
+        val exact = DISCORD_SHORTCODES.filter { it.first == needle }
+        val prefix = DISCORD_SHORTCODES.filter { it.first != needle && it.first.startsWith(needle) }
+        val partial = DISCORD_SHORTCODES.filter {
+            it.first != needle && !it.first.startsWith(needle) && it.first.contains(needle)
+        }
+        return (exact + prefix + partial).distinctBy { it.second }.take(limit)
+    }
+
+    fun exactEmojiShortcode(code: String): String? {
+        val needle = code.trim().lowercase()
+        return DISCORD_SHORTCODES.firstOrNull { it.first == needle }?.second
+    }
+
+    fun wordMoveBefore(before: String): Int {
+        if (before.isEmpty()) return 0
+        var idx = before.length
+        while (idx > 0 && before[idx - 1].isWhitespace()) idx--
+        if (idx > 0 && !before[idx - 1].isLetterOrDigit()) {
+            while (idx > 0 && !before[idx - 1].isLetterOrDigit() && !before[idx - 1].isWhitespace()) idx--
+        } else {
+            while (idx > 0 && before[idx - 1].isLetterOrDigit()) idx--
+        }
+        return (before.length - idx).coerceAtLeast(1)
+    }
+
+    fun wordMoveAfter(after: String): Int {
+        if (after.isEmpty()) return 0
+        var idx = 0
+        while (idx < after.length && after[idx].isWhitespace()) idx++
+        if (idx < after.length && !after[idx].isLetterOrDigit()) {
+            while (idx < after.length && !after[idx].isLetterOrDigit() && !after[idx].isWhitespace()) idx++
+        } else {
+            while (idx < after.length && after[idx].isLetterOrDigit()) idx++
+        }
+        return idx.coerceAtLeast(1)
+    }
+
+    fun phraseMoveBefore(before: String): Int {
+        if (before.isEmpty()) return 0
+        var idx = before.length - 1
+        while (idx > 0 && (before[idx].isWhitespace() || before[idx] in charArrayOf('.', '!', '?'))) {
+            idx--
+        }
+        while (idx > 0) {
+            val ch = before[idx - 1]
+            if (ch == '\n' || ch == '.' || ch == '!' || ch == '?') {
+                while (idx < before.length && before[idx] == ' ') idx++
+                break
+            }
+            idx--
+        }
+        return (before.length - idx).coerceAtLeast(1)
+    }
+
+    fun phraseMoveAfter(after: String): Int {
+        if (after.isEmpty()) return 0
+        var idx = 0
+        while (idx < after.length && after[idx].isWhitespace()) idx++
+        while (idx < after.length) {
+            val ch = after[idx]
+            idx++
+            if (ch == '\n' || ch == '.' || ch == '!' || ch == '?') {
+                while (idx < after.length && after[idx] == ' ') idx++
+                break
+            }
+        }
+        return idx.coerceAtLeast(1)
     }
 }

@@ -170,4 +170,37 @@ class KeyboardStateLogicTest {
         assertEquals("Ship v1.0", decodedFull.todoTasks[1].title)
         assertTrue(decodedFull.todoTasks[1].isCompleted)
     }
+
+    @Test
+    fun splitRowSplitsAlphaAndBottomRowsEvenly() {
+        val (left, right) = KeyboardStateLogic.splitRowForErgonomics(
+            listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
+            rowIndex = 0,
+        )
+        assertEquals(listOf("q", "w", "e", "r", "t"), left)
+        assertEquals(listOf("y", "u", "i", "o", "p"), right)
+
+        val (bLeft, bRight) = KeyboardStateLogic.splitRowForErgonomics(
+            listOf("EMOJI_KEY", "SYMBOLS", ",", "SPACE", ".", "'", "RETURN"),
+            rowIndex = 3,
+        )
+        assertEquals(listOf("EMOJI_KEY", "SYMBOLS", ",", "SPACE"), bLeft)
+        assertEquals(listOf("SPACE", ".", "'", "RETURN"), bRight)
+    }
+
+    @Test
+    fun discordShortcodeDetectsAndResolvesEmojis() {
+        assertEquals("fir", KeyboardStateLogic.extractActiveShortcodeQuery("hello :fir"))
+        assertEquals(null, KeyboardStateLogic.extractActiveShortcodeQuery("http://example.com"))
+        assertEquals("🔥", KeyboardStateLogic.exactEmojiShortcode("fire"))
+        val hits = KeyboardStateLogic.findEmojiShortcodeMatches("hea", limit = 3)
+        assertTrue(hits.any { it.second == "❤️" })
+    }
+
+    @Test
+    fun navigationHelpersMeasureWordAndPhraseSteps() {
+        assertEquals(5, KeyboardStateLogic.wordMoveBefore("hello world"))
+        assertEquals(6, KeyboardStateLogic.wordMoveAfter(" world again"))
+        assertTrue(KeyboardStateLogic.phraseMoveBefore("First sentence. Second part") < "First sentence. Second part".length)
+    }
 }

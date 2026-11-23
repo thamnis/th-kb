@@ -322,7 +322,7 @@ internal fun EmojiAndKaomojiPanel(
             ) {
                 Text(
                     text = "🔍 $searchQuery (Tap to edit)",
-                    color = Color.White,
+                    color = KeyTextColor,
                     fontSize = 12.5.sp,
                     modifier = Modifier.weight(1f),
                 )
@@ -688,7 +688,7 @@ internal fun FavoritesGridContent(
             ) {
                 Text(
                     text = item,
-                    color = Color.White,
+                    color = KeyTextColor,
                     fontSize = if (item.length <= 2) 20.sp else 13.sp,
                     maxLines = 1,
                     modifier = Modifier.weight(1f),
@@ -751,7 +751,7 @@ internal fun KaomojiGridContent(
             ) {
                 Text(
                     text = item.text,
-                    color = Color.White,
+                    color = KeyTextColor,
                     fontSize = 14.sp,
                     maxLines = 1,
                     modifier = Modifier.weight(1f),

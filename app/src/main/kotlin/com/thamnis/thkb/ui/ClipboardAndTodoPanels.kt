@@ -17,6 +17,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.Icon
@@ -58,6 +60,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -72,12 +77,14 @@ internal fun ClipboardPanel(
     panelHeightDp: Float,
     entries: List<ClipboardEntry>,
     onCommitClip: (String) -> Unit,
+    onCommitMediaClip: (ClipboardEntry) -> Unit = { onCommitClip(it.text) },
     onSystemPaste: () -> Unit,
     onPinClip: (String) -> Unit,
     onDeleteClip: (String) -> Unit,
     onClearUnpinned: () -> Unit,
 ) {
     val contentHeight = (panelHeightDp - 40f).coerceAtLeast(180f).dp
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -127,20 +134,63 @@ internal fun ClipboardPanel(
                     .height(contentHeight),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                items(entries, key = { it.text }) { entry ->
+                items(entries, key = { it.mediaUri ?: it.text }) { entry ->
+                    val thumbnailBitmap = remember(entry.mediaUri) {
+                        val uriStr = entry.mediaUri ?: return@remember null
+                        runCatching {
+                            val opts = android.graphics.BitmapFactory.Options().apply {
+                                inSampleSize = 4
+                            }
+                            context.contentResolver.openInputStream(android.net.Uri.parse(uriStr))?.use { stream ->
+                                android.graphics.BitmapFactory.decodeStream(stream, null, opts)?.asImageBitmap()
+                            }
+                        }.getOrNull()
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
                             .background(KeyBgColor)
-                            .clickable { onCommitClip(entry.text) }
+                            .clickable {
+                                if (entry.isRichMedia) {
+                                    onCommitMediaClip(entry)
+                                } else {
+                                    onCommitClip(entry.text)
+                                }
+                            }
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
+                        if (entry.isRichMedia) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(ActionKeyBgColor),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (thumbnailBitmap != null) {
+                                    Image(
+                                        bitmap = thumbnailBitmap,
+                                        contentDescription = entry.text,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.size(38.dp),
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Image,
+                                        contentDescription = entry.text,
+                                        tint = ReturnBgColor,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                        }
                         Text(
                             text = entry.text,
-                            color = Color.White,
+                            color = KeyTextColor,
                             fontSize = 14.sp,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -158,7 +208,7 @@ internal fun ClipboardPanel(
                                 tint = if (entry.pinned) ReturnBgColor else HintTextColor,
                                 modifier = Modifier
                                     .size(20.dp)
-                                    .clickable { onPinClip(entry.text) },
+                                    .clickable { onPinClip(entry.mediaUri ?: entry.text) },
                             )
                             Icon(
                                 imageVector = Icons.Outlined.Delete,
@@ -166,7 +216,7 @@ internal fun ClipboardPanel(
                                 tint = HintTextColor,
                                 modifier = Modifier
                                     .size(20.dp)
-                                    .clickable { onDeleteClip(entry.text) },
+                                    .clickable { onDeleteClip(entry.mediaUri ?: entry.text) },
                             )
                         }
                     }
@@ -222,7 +272,7 @@ internal fun TodoListPanel(
             ) {
                 Text(
                     text = "Todo",
-                    color = Color.White,
+                    color = KeyTextColor,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
                 )
@@ -298,7 +348,7 @@ internal fun TodoListPanel(
                     value = newTaskText,
                     onValueChange = { newTaskText = it },
                     singleLine = true,
-                    textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
+                    textStyle = TextStyle(color = KeyTextColor, fontSize = 14.sp),
                     cursorBrush = SolidColor(ReturnBgColor),
                     modifier = Modifier.weight(1f),
                     decorationBox = { innerTextField ->
@@ -411,7 +461,7 @@ internal fun TodoItemRow(
 ) {
     val density = LocalDensity.current
     val textColor by animateColorAsState(
-        targetValue = if (task.isCompleted) HintTextColor else Color.White,
+        targetValue = if (task.isCompleted) HintTextColor else KeyTextColor,
         animationSpec = tween(durationMillis = 250),
         label = "textColor",
     )
@@ -460,6 +510,8 @@ internal fun TodoItemRow(
 
         Spacer(modifier = Modifier.width(6.dp))
 
+        val strikeColor = HintTextColor
+
         Text(
             text = task.title,
             color = textColor,
@@ -474,7 +526,7 @@ internal fun TodoItemRow(
                     if (strikeProgress > 0f) {
                         val y = size.height / 2f
                         drawLine(
-                            color = HintTextColor,
+                            color = strikeColor,
                             start = Offset(0f, y),
                             end = Offset(size.width * strikeProgress, y),
                             strokeWidth = 1.8f * density.density,

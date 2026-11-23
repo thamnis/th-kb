@@ -76,7 +76,7 @@ internal fun VoiceTypingPanel(
             ) {
                 Text(
                     text = if (langLabel == "FR") "Français (FR)" else "English (EN)",
-                    color = Color.White,
+                    color = KeyTextColor,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
@@ -130,7 +130,7 @@ internal fun VoiceTypingPanel(
                 },
                 color = when {
                     voiceUiState.errorMessage != null -> Color(0xFFFCA5A5)
-                    streamedDisplay.isNotEmpty() -> Color.White
+                    streamedDisplay.isNotEmpty() -> KeyTextColor
                     else -> HintTextColor
                 },
                 fontSize = if (streamedDisplay.isNotEmpty()) 15.sp else 13.sp,
@@ -157,7 +157,7 @@ internal fun VoiceTypingPanel(
             ) {
                 Text(
                     text = "ABC",
-                    color = Color.White,
+                    color = KeyTextColor,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                 )
@@ -178,7 +178,7 @@ internal fun VoiceTypingPanel(
                         else -> Icons.Outlined.Mic
                     },
                     contentDescription = if (voiceUiState.isListening) "Stop & Insert" else "Start Dictation",
-                    tint = if (voiceUiState.isListening) ReturnFgColor else Color.White,
+                    tint = if (voiceUiState.isListening) ReturnFgColor else KeyTextColor,
                     modifier = Modifier.size(26.dp),
                 )
             }
@@ -194,7 +194,7 @@ internal fun VoiceTypingPanel(
                 Icon(
                     imageVector = Icons.AutoMirrored.Outlined.Backspace,
                     contentDescription = "Backspace",
-                    tint = Color.White,
+                    tint = KeyTextColor,
                     modifier = Modifier.size(20.dp),
                 )
             }

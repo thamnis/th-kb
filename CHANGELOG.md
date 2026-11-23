@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0-beta.1] - 2026-11-23
+
+### Added
+- **Ergonomic Keyboard Modes (`v1.1`)**:
+  - **Split Thumb Mode**: Separates key rows evenly down the middle with symmetric left/right Spacebars.
+  - **One-Hand Mode (Left / Right)**: Docks the keyboard to 84% width with a quick side rail to expand, flip hand, or enter Floating mode.
+  - **Floating Window**: Draggable rounded floating keyboard card with persisted X/Y placement and real `onComputeInsets` (`TOUCHABLE_INSETS_REGION`) pass-through outside the keyboard card.
+  - **Quick Mode & Tool Switcher**: Hold the `☺` key to reveal a 2×5 bar for Clipboard, To-Do, Navigate, Media, Remote, Normal, Split, 1-Hand, Float, and Settings.
+- **Themes & Material You (`v1.1`)**:
+  - Reactive theme engine (`LocalKbPalette`, `KbColorPalette`) supporting **Material You** (Android 12+ dynamic wallpaper colors), **Dark Graphite**, **Midnight AMOLED**, **Warm Paper**, **Ocean Slate**, and **Forest Sage** with live swatches in Settings.
+- **Power Navigation & Rich Media (`v1.2`)**:
+  - **Navigation Panel**: Move or **Select** cursor position by Letter, Word, Phrase, Paragraph, Line Home/End, and Document Start/End, plus Select All / Copy / Cut / Paste.
+  - **System Media Controls**: Compact playback transport (`Play/Pause`, `Previous`, `Next`, `Rewind`, `Fast-Forward`) and Volume (`Vol-`, `Mute`, `Vol+`).
+  - **Rich Media Copy-Pasting**: `ClipboardHistoryManager` caches clipboard images via `FileProvider`, previews thumbnails in `ClipboardPanel`, and commits them via `InputConnectionCompat.commitContent()`.
+  - **Discord `:shortcode:` Emoji Writing**: Typing `:word` shows inline emoji completions in the suggestion strip, and closing `:` auto-replaces known shortcodes (`:fire:` → `🔥`).
+- **Cross-Device File Sending & Remote Input (`v1.3`)**:
+  - **LocalSend v2 & KDE Connect**: LAN Wi-Fi peer discovery (`224.0.0.167:53317` multicast & `:1716` broadcast) and file transfer client in **Settings → Cross-Device & Remote**.
+  - **Remote KB & Mouse (`rust-companion`)**: Built-in touchpad, scroll rail, mouse clicks, and text-to-PC bar inside the keyboard (`PanelMode.REMOTE`), backed by the standalone `rust-companion/` UDP desktop companion crate.
+
 ## [1.0.0-beta.3] - 2026-11-20
 
 ### Added

@@ -21,6 +21,7 @@ captures/
 
 # Rust
 rust-core/target/
+rust-companion/target/
 desktop-companion/target/
 **/*.rs.bk
 

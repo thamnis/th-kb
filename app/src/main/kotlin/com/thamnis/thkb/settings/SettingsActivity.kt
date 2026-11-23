@@ -19,6 +19,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +38,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -52,6 +54,7 @@ import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material.icons.outlined.Gesture
 import androidx.compose.material.icons.outlined.Keyboard
@@ -59,13 +62,18 @@ import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.LocalHospital
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.Mouse
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material.icons.outlined.Vibration
+import androidx.compose.material.icons.outlined.ViewColumn
 import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.WifiFind
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -86,21 +94,32 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.thamnis.thkb.BuildConfig
 import com.thamnis.thkb.data.ClipboardHistoryManager
+import com.thamnis.thkb.data.CrossDevicePeer
+import com.thamnis.thkb.data.CrossDeviceProtocol
 import com.thamnis.thkb.data.DialectPack
 import com.thamnis.thkb.data.DialectPackManager
+import com.thamnis.thkb.data.PeerProtocol
 import com.thamnis.thkb.data.PersonalDictionaryManager
+import com.thamnis.thkb.data.RemoteInputClient
 import com.thamnis.thkb.data.TodoListManager
+import com.thamnis.thkb.data.TransferResult
+import com.thamnis.thkb.ui.allAvailablePalettes
+import com.thamnis.thkb.ui.resolveKbPalette
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -127,6 +146,8 @@ private enum class SettingsPage(val title: String) {
     MAIN("Settings"),
     TRY_KEYBOARD("Try Keyboard"),
     LAYOUT("Language & Layout"),
+    THEMES("Themes & Ergonomics"),
+    CROSS_DEVICE("Cross-Device & Remote"),
     DIALECT_STORE("Dialect & Jargon Store"),
     DIALECT_DETAIL("Dialect Vocabulary"),
     PERSONAL_DICT("My Custom Words"),
@@ -437,6 +458,33 @@ class SettingsActivity : ComponentActivity() {
                                             valueText = if (settings.layoutId == "azerty_fr") "French AZERTY" else "English QWERTY",
                                             onClick = { currentPage = SettingsPage.LAYOUT },
                                         )
+                                        SettingsRowDivider()
+                                        val ctx = LocalContext.current
+                                        val activeThemeLabel = remember(settings.themeId, ctx) {
+                                            resolveKbPalette(settings.themeId, ctx).displayName
+                                        }
+                                        val modeLabel = when (settings.keyboardErgonomicMode) {
+                                            KbSettings.ERGONOMIC_SPLIT -> "Split"
+                                            KbSettings.ERGONOMIC_ONE_HAND_LEFT -> "Left Hand"
+                                            KbSettings.ERGONOMIC_ONE_HAND_RIGHT -> "Right Hand"
+                                            KbSettings.ERGONOMIC_FLOATING -> "Floating"
+                                            else -> "Standard"
+                                        }
+                                        SettingsNavRow(
+                                            icon = Icons.Outlined.Palette,
+                                            title = "Themes & Ergonomics",
+                                            subtitle = "Palettes, Material You, Split, One-Hand & Floating",
+                                            valueText = "$activeThemeLabel · $modeLabel",
+                                            onClick = { currentPage = SettingsPage.THEMES },
+                                        )
+                                        SettingsRowDivider()
+                                        SettingsNavRow(
+                                            icon = Icons.Outlined.Devices,
+                                            title = "Cross-Device & Remote",
+                                            subtitle = "LocalSend, KDE Connect file transfer & Remote KB/Mouse",
+                                            valueText = if (settings.remoteHostIp.isNotEmpty()) settings.remoteHostIp else "Wi-Fi LAN",
+                                            onClick = { currentPage = SettingsPage.CROSS_DEVICE },
+                                        )
                                     }
 
                                     SettingsGroup(title = "Typing & Comfort") {
@@ -601,7 +649,8 @@ class SettingsActivity : ComponentActivity() {
                                                     "• Glide Up on Shift (⇧): Switch between Word Glide and Char-by-Char Glide.\n" +
                                                     "• Hold Spacebar (1s): Switch between French AZERTY & English QWERTY.\n" +
                                                     "• Slide Spacebar: Move the cursor left/right or up/down with the 2D dot indicator.\n" +
-                                                    "• Hold Emoji (☺): Reveal hidden tools (Clipboard, To-Do List, Settings).\n" +
+                                                    "• Hold Emoji (☺): Open Clipboard, To-Do, Navigate, Media, Remote, Split/1-Hand/Float & Settings.\n" +
+                                                    "• Discord Emoji Shortcodes: Type :fire:, :heart:, :joy: for instant inline emoji completion.\n" +
                                                     "• Glide Toolbar (← / →): Swipe left or right anywhere on the top toolbar to Undo or Redo.\n" +
                                                     "• Shift on Selection: Select text and tap Shift (⇧) to cycle its case.\n" +
                                                     "• Glide Up on ?123 / ABC: Switch between Numpad (123) and Symbols (?#).",
@@ -619,13 +668,241 @@ class SettingsActivity : ComponentActivity() {
                                             "qwerty_en" to "English (QWERTY)",
                                             "azerty_fr" to "French (AZERTY)",
                                         )
-                                        layouts.forEachIndexed { index, (id, label) ->
+                                            layouts.forEachIndexed { index, (id, label) ->
+                                                if (index > 0) SettingsRowDivider()
+                                                SettingsCheckRow(
+                                                    icon = Icons.Outlined.Language,
+                                                    title = label,
+                                                    selected = settings.layoutId == id,
+                                                    onClick = { preferences.setLayoutId(id) },
+                                                )
+                                            }
+                                        }
+                                }
+
+                                SettingsPage.THEMES -> {
+                                    val ctx = LocalContext.current
+                                    val palettes = remember(ctx) { allAvailablePalettes(ctx) }
+                                    SettingsGroup(title = "Keyboard Theme Palette") {
+                                        palettes.forEachIndexed { index, palette ->
                                             if (index > 0) SettingsRowDivider()
+                                            val isSelected = settings.themeId == palette.id
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { preferences.setThemeId(palette.id) }
+                                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                // Visual color swatch preview
+                                                Row(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(palette.bg)
+                                                        .border(1.dp, SettingsBorderColor, RoundedCornerShape(8.dp))
+                                                        .padding(5.dp),
+                                                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(14.dp)
+                                                            .clip(CircleShape)
+                                                            .background(palette.keyBg),
+                                                    )
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(14.dp)
+                                                            .clip(CircleShape)
+                                                            .background(palette.returnBg),
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(14.dp))
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = palette.displayName,
+                                                        color = SettingsTextPrimary,
+                                                        fontSize = 15.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                    )
+                                                    Text(
+                                                        text = palette.subtitle,
+                                                        color = SettingsTextSecondary,
+                                                        fontSize = 12.sp,
+                                                    )
+                                                }
+                                                if (isSelected) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.Check,
+                                                        contentDescription = "Selected",
+                                                        tint = SettingsAccentBlue,
+                                                        modifier = Modifier.size(20.dp),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    SettingsGroup(title = "Ergonomic Keyboard Mode") {
+                                        val modes = listOf(
+                                            Triple(KbSettings.ERGONOMIC_NORMAL, "Standard Full Width", "Full-width docked keyboard"),
+                                            Triple(KbSettings.ERGONOMIC_SPLIT, "Split Thumb Mode", "Divides keys down the center for two-thumb typing"),
+                                            Triple(KbSettings.ERGONOMIC_ONE_HAND_LEFT, "One-Hand (Left)", "Docked left with quick-flip & expand rail"),
+                                            Triple(KbSettings.ERGONOMIC_ONE_HAND_RIGHT, "One-Hand (Right)", "Docked right with quick-flip & expand rail"),
+                                            Triple(KbSettings.ERGONOMIC_FLOATING, "Floating Window", "Draggable window with pass-through touch insets"),
+                                        )
+                                        modes.forEachIndexed { idx, (modeId, title, sub) ->
+                                            if (idx > 0) SettingsRowDivider()
                                             SettingsCheckRow(
-                                                icon = Icons.Outlined.Language,
-                                                title = label,
-                                                selected = settings.layoutId == id,
-                                                onClick = { preferences.setLayoutId(id) },
+                                                icon = Icons.Outlined.ViewColumn,
+                                                title = "$title — $sub",
+                                                selected = settings.keyboardErgonomicMode == modeId,
+                                                onClick = { preferences.setKeyboardErgonomicMode(modeId) },
+                                            )
+                                        }
+                                    }
+                                }
+
+                                SettingsPage.CROSS_DEVICE -> {
+                                    val ctx = LocalContext.current
+                                    val scope = rememberCoroutineScope()
+                                    var isScanning by remember { mutableStateOf(false) }
+                                    var peers by remember { mutableStateOf<List<CrossDevicePeer>>(emptyList()) }
+                                    var selectedFilePeer by remember { mutableStateOf<CrossDevicePeer?>(null) }
+                                    var statusMsg by remember { mutableStateOf("Tap Scan Network to find LocalSend, KDE Connect, or th-kb Remote peers on your Wi-Fi.") }
+                                    var hostIpDraft by remember(settings.remoteHostIp) { mutableStateOf(settings.remoteHostIp) }
+                                    var hostPortDraft by remember(settings.remoteHostPort) { mutableStateOf(settings.remoteHostPort.toString()) }
+
+                                    val filePicker = rememberLauncherForActivityResult(
+                                        contract = ActivityResultContracts.OpenDocument(),
+                                    ) { uri ->
+                                        val peer = selectedFilePeer
+                                        if (uri != null && peer != null) {
+                                            statusMsg = "Sending file to ${peer.name}..."
+                                            scope.launch {
+                                                when (val res = CrossDeviceProtocol.sendFile(ctx, peer, uri)) {
+                                                    is TransferResult.Success -> statusMsg = res.message
+                                                    is TransferResult.Failure -> statusMsg = res.error
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    SettingsGroup(title = "Wi-Fi File Sending (LocalSend v2 & KDE Connect)") {
+                                        Column(
+                                            modifier = Modifier.padding(16.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                                        ) {
+                                            Text(
+                                                text = statusMsg,
+                                                color = SettingsTextSecondary,
+                                                fontSize = 13.sp,
+                                            )
+                                            Button(
+                                                onClick = {
+                                                    if (!isScanning) {
+                                                        isScanning = true
+                                                        statusMsg = "Scanning Wi-Fi LAN for LocalSend, KDE Connect & th-kb Remote..."
+                                                        scope.launch {
+                                                            val found = CrossDeviceProtocol.discoverAllPeers(ctx, 1800L)
+                                                            peers = found
+                                                            statusMsg = if (found.isEmpty()) {
+                                                                "No LAN peers responded. Ensure LocalSend / KDE Connect / th-kb-companion is running on the same Wi-Fi."
+                                                            } else {
+                                                                "Found ${found.size} device(s) on local Wi-Fi."
+                                                            }
+                                                            isScanning = false
+                                                        }
+                                                    }
+                                                },
+                                                enabled = !isScanning,
+                                                shape = RoundedCornerShape(10.dp),
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.WifiFind,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(if (isScanning) "Scanning..." else "Scan Wi-Fi Network")
+                                            }
+                                        }
+
+                                        if (peers.isNotEmpty()) {
+                                            peers.forEach { peer ->
+                                                SettingsRowDivider()
+                                                SettingsNavRow(
+                                                    icon = if (peer.protocol == PeerProtocol.THKB_REMOTE) Icons.Outlined.Mouse else Icons.Outlined.Send,
+                                                    title = "${peer.name} (${peer.ip}:${peer.port})",
+                                                    subtitle = if (peer.protocol == PeerProtocol.THKB_REMOTE) {
+                                                        "Tap to bind as Remote KB & Mouse host"
+                                                    } else {
+                                                        "Tap to pick a file & send via ${peer.protocol.label}"
+                                                    },
+                                                    valueText = peer.protocol.label,
+                                                    onClick = {
+                                                        if (peer.protocol == PeerProtocol.THKB_REMOTE) {
+                                                            hostIpDraft = peer.ip
+                                                            hostPortDraft = peer.port.toString()
+                                                            preferences.setRemoteHost(peer.ip, peer.port)
+                                                            statusMsg = "Remote KB & Mouse target set to ${peer.ip}:${peer.port}"
+                                                        } else {
+                                                            selectedFilePeer = peer
+                                                            filePicker.launch(arrayOf("*/*"))
+                                                        }
+                                                    },
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    SettingsGroup(title = "Remote KB & Mouse (Computer Companion)") {
+                                        Column(
+                                            modifier = Modifier.padding(16.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                                        ) {
+                                            OutlinedTextField(
+                                                value = hostIpDraft,
+                                                onValueChange = { hostIpDraft = it },
+                                                label = { Text("Computer LAN IP (e.g. 192.168.1.42)") },
+                                                singleLine = true,
+                                                modifier = Modifier.fillMaxWidth(),
+                                            )
+                                            OutlinedTextField(
+                                                value = hostPortDraft,
+                                                onValueChange = { hostPortDraft = it },
+                                                label = { Text("UDP Port (default 55677)") },
+                                                singleLine = true,
+                                                modifier = Modifier.fillMaxWidth(),
+                                            )
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            ) {
+                                                Button(
+                                                    onClick = {
+                                                        val port = hostPortDraft.toIntOrNull() ?: KbSettings.DEFAULT_REMOTE_PORT
+                                                        preferences.setRemoteHost(hostIpDraft, port)
+                                                        statusMsg = "Saved Remote host ${hostIpDraft.trim()}:$port"
+                                                    },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                ) {
+                                                    Text("Save Host")
+                                                }
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        val port = hostPortDraft.toIntOrNull() ?: KbSettings.DEFAULT_REMOTE_PORT
+                                                        RemoteInputClient.sendMove(hostIpDraft.trim(), port, 12f, 0f)
+                                                        statusMsg = "Sent test pointer pulse to ${hostIpDraft.trim()}:$port"
+                                                    },
+                                                    enabled = hostIpDraft.isNotBlank(),
+                                                    shape = RoundedCornerShape(10.dp),
+                                                ) {
+                                                    Text("Test Pointer")
+                                                }
+                                            }
+                                            Text(
+                                                text = "Run `cargo run --manifest-path rust-companion/Cargo.toml --release` on your PC, then hold ☺ → Remote on the keyboard.",
+                                                color = SettingsTextSecondary,
+                                                fontSize = 12.sp,
                                             )
                                         }
                                     }
