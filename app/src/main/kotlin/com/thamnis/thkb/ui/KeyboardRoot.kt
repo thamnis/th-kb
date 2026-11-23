@@ -537,29 +537,30 @@ private fun KeyboardRootContent(
             2 -> panelMode = PanelMode.NAV
             3 -> panelMode = PanelMode.MEDIA
             4 -> panelMode = PanelMode.REMOTE
-            5 -> onChangeErgonomicMode(KbSettings.ERGONOMIC_NORMAL)
-            6 -> onChangeErgonomicMode(
+            5 -> onChangeErgonomicMode(
                 if (ergonomicMode == KbSettings.ERGONOMIC_SPLIT) {
                     KbSettings.ERGONOMIC_NORMAL
                 } else {
                     KbSettings.ERGONOMIC_SPLIT
                 },
             )
-            7 -> onChangeErgonomicMode(
-                if (ergonomicMode == KbSettings.ERGONOMIC_ONE_HAND_RIGHT) {
-                    KbSettings.ERGONOMIC_ONE_HAND_LEFT
+            6 -> onChangeErgonomicMode(
+                if (ergonomicMode == KbSettings.ERGONOMIC_ONE_HAND_RIGHT ||
+                    ergonomicMode == KbSettings.ERGONOMIC_ONE_HAND_LEFT
+                ) {
+                    KbSettings.ERGONOMIC_NORMAL
                 } else {
                     KbSettings.ERGONOMIC_ONE_HAND_RIGHT
                 },
             )
-            8 -> onChangeErgonomicMode(
+            7 -> onChangeErgonomicMode(
                 if (ergonomicMode == KbSettings.ERGONOMIC_FLOATING) {
                     KbSettings.ERGONOMIC_NORMAL
                 } else {
                     KbSettings.ERGONOMIC_FLOATING
                 },
             )
-            9 -> onOpenSettings()
+            8 -> onOpenSettings()
         }
     }
 
@@ -1399,7 +1400,6 @@ private fun KeyboardRootContent(
         ) {
             val toolsPopup = activeEmojiToolsPopup ?: return@AnimatedVisibility
             val cellDp = 42.dp
-            val popupCols = 5
             val popupRows = 2
             val cellStepX = cellDp + 4.dp
             val cellStepY = cellDp + 4.dp
@@ -1413,21 +1413,28 @@ private fun KeyboardRootContent(
             val popupOffsetX = (surfaceOriginX + toolsPopup.anchorX)
                 .coerceIn(0f, (rootWidthPx - 240f).coerceAtLeast(0f))
                 .roundToInt()
-            val toolIcons = listOf(
-                Icons.Outlined.ContentPaste to "Clipboard",
-                Icons.Outlined.Checklist to "To-Do",
-                Icons.Outlined.OpenWith to "Navigate",
-                Icons.Outlined.MusicNote to "Media",
-                Icons.Outlined.Mouse to "Remote",
-                Icons.Outlined.Keyboard to "Normal",
-                Icons.Outlined.ViewColumn to "Split",
-                Icons.Outlined.Smartphone to "1-Hand",
-                Icons.Outlined.PictureInPictureAlt to "Float",
-                Icons.Outlined.Settings to "Settings",
+            val toolRows = listOf(
+                listOf(
+                    Triple(0, Icons.Outlined.ContentPaste, "Clipboard"),
+                    Triple(1, Icons.Outlined.Checklist, "To-Do"),
+                    Triple(2, Icons.Outlined.OpenWith, "Navigate"),
+                    Triple(3, Icons.Outlined.MusicNote, "Media"),
+                    Triple(4, Icons.Outlined.Mouse, "Remote"),
+                ),
+                listOf(
+                    Triple(5, Icons.Outlined.ViewColumn, "Split"),
+                    Triple(6, Icons.Outlined.Smartphone, "1-Hand"),
+                    Triple(7, Icons.Outlined.PictureInPictureAlt, "Float"),
+                    Triple(8, Icons.Outlined.Settings, "Settings"),
+                ),
             )
-            val selectedIdx = toolsPopup.selectedIndex.coerceIn(0, toolIcons.lastIndex)
-            val targetCol = (selectedIdx % popupCols).toFloat()
-            val targetRow = (selectedIdx / popupCols).toFloat()
+            val selectedIdx = toolsPopup.selectedIndex
+            val targetCol = if (selectedIdx in 0..8) {
+                if (selectedIdx < 5) selectedIdx.toFloat() else (selectedIdx - 5).toFloat()
+            } else {
+                0f
+            }
+            val targetRow = if (selectedIdx in 5..8) 1f else 0f
             val bubbleCol by animateFloatAsState(
                 targetValue = targetCol,
                 animationSpec = spring(dampingRatio = 0.72f, stiffness = 650f),
@@ -1449,25 +1456,25 @@ private fun KeyboardRootContent(
                     .border(1.dp, PillKeyBgColor, RoundedCornerShape(20.dp)),
             ) {
                 Box(modifier = Modifier.padding(8.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .offset {
-                                val xPx = with(density) { (bubbleCol * cellStepX.toPx()).roundToInt() }
-                                val yPx = with(density) { (bubbleRow * cellStepY.toPx()).roundToInt() }
-                                IntOffset(xPx, yPx)
-                            }
-                            .size(cellDp)
-                            .background(ReturnBgColor, CircleShape),
-                    )
+                    if (selectedIdx in 0..8) {
+                        Box(
+                            modifier = Modifier
+                                .offset {
+                                    val xPx = with(density) { (bubbleCol * cellStepX.toPx()).roundToInt() }
+                                    val yPx = with(density) { (bubbleRow * cellStepY.toPx()).roundToInt() }
+                                    IntOffset(xPx, yPx)
+                                }
+                                .size(cellDp)
+                                .background(ReturnBgColor, CircleShape),
+                        )
+                    }
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        for (r in 0 until popupRows) {
+                        toolRows.forEach { rowItems ->
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                for (c in 0 until popupCols) {
-                                    val idx = r * popupCols + c
-                                    val (iconVec, desc) = toolIcons[idx]
+                                rowItems.forEach { (idx, iconVec, desc) ->
                                     val isSelected = idx == selectedIdx
                                     val iconTint by animateColorAsState(
                                         targetValue = if (isSelected) ReturnFgColor else KeyTextColor,
@@ -2230,10 +2237,11 @@ private fun TouchKeyGrid(
                                         val padPx = with(density) { 8.dp.toPx() }
                                         val popupTopInGrid = toolsPopup.anchorY - cellStepPx * 2f - with(density) { 18.dp.toPx() }
                                         val row = if (localPos.y < popupTopInGrid + cellStepPx) 0 else 1
+                                        val maxCol = if (row == 0) 4 else 3
                                         val col = ((localPos.x - (toolsPopup.anchorX + padPx)) / cellStepPx)
                                             .toInt()
-                                            .coerceIn(0, 4)
-                                        val idx = (row * 5 + col).coerceIn(0, 9)
+                                            .coerceIn(0, maxCol)
+                                        val idx = if (row == 0) col else 5 + col
                                         if (idx != toolsPopup.selectedIndex) {
                                             latestOnShowEmojiToolsPopup(toolsPopup.copy(selectedIndex = idx))
                                         }
@@ -2476,7 +2484,7 @@ private fun TouchKeyGrid(
                                 val popup = latestPopup
                                 val normalizedKey = if (pointer.keyId == "SPACE_R") "SPACE" else pointer.keyId
                                 if (pointer.keyId == "EMOJI_KEY" && toolsPopup != null) {
-                                    if (toolsPopup.selectedIndex in 0..9) {
+                                    if (toolsPopup.selectedIndex in 0..8) {
                                         latestOnSelectEmojiTool(toolsPopup.selectedIndex)
                                     }
                                 } else if (popup != null) {
